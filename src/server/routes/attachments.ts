@@ -2,9 +2,9 @@ import { Hono } from 'hono';
 import type { AppEnv } from '../env.ts';
 import { requireJwtAuth } from '../auth/jwt.ts';
 import { findAttachmentRow, requireGrievance, assertCanViewGrievance } from '../db/queries.ts';
-import { readStoredFile } from '../storage/attachments.ts';
 import { HttpError } from '../http/errors.ts';
 import { validateResourceId } from '../validation/validate.ts';
+import { R2_PUBLIC_DOMAIN } from '../config.ts';
 
 export const attachmentRoutes = new Hono<AppEnv>();
 
@@ -20,12 +20,5 @@ attachmentRoutes.get('/:id', async (c) => {
 	const grievance = requireGrievance(db, row.grievance_id);
 	assertCanViewGrievance(user as any, grievance);
 	
-	const bytes = readStoredFile(c.get('uploadsDir'), row.stored_filename);
-	c.header('Content-Type', row.mime_type);
-	c.header('Content-Length', String(bytes.length));
-	c.header(
-		'Content-Disposition',
-		`inline; filename="${row.original_filename.replaceAll('"', '')}"`
-	);
-	return c.body(new Uint8Array(bytes));
+	return c.redirect(row.url);
 });

@@ -33,9 +33,9 @@ export interface User {
 export interface Attachment {
 	id: string;
 	filename: string;
-	sizeBytes: number;
 	/** MIME type; the backend will later enforce allowed types authoritatively. */
 	contentType: string;
+	url: string;
 }
 
 export interface Comment {

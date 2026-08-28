@@ -4,12 +4,6 @@
 	import FileIcon from '@lucide/svelte/icons/file';
 
 	let { attachment }: { attachment: Attachment } = $props();
-
-	function formatSize(bytes: number): string {
-		if (bytes >= 1_048_576) return `${(bytes / 1_048_576).toFixed(1)} MB`;
-		if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;
-		return `${bytes} B`;
-	}
 </script>
 
 <Card class="py-3">
@@ -24,7 +18,7 @@
 			<p class="truncate text-sm font-medium">
 				<a
 					class="hover:underline"
-					href="/api/attachments/{attachment.id}"
+					href={attachment.url}
 					target="_blank"
 					rel="noreferrer"
 				>
@@ -32,7 +26,7 @@
 				</a>
 			</p>
 			<p class="text-muted-foreground text-xs">
-				{formatSize(attachment.sizeBytes)} · {attachment.contentType}
+				{attachment.contentType}
 			</p>
 		</div>
 	</CardContent>

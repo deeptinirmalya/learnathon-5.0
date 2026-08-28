@@ -87,8 +87,8 @@ export function validateCommentBody(value: unknown): string {
 /** Grievance IDs look like GRV-0001, GRV-0042, etc. */
 const GRIEVANCE_ID_RE = /^GRV-\d{4,}$/;
 
-export function validateGrievanceId(value: string): string {
-	if (!GRIEVANCE_ID_RE.test(value)) {
+export function validateGrievanceId(value: string | undefined): string {
+	if (!value || !GRIEVANCE_ID_RE.test(value)) {
 		throw new HttpError(400, 'bad_request', 'Invalid grievance ID format.');
 	}
 	return value;
@@ -97,8 +97,8 @@ export function validateGrievanceId(value: string): string {
 /** Generic alphanumeric-and-hyphen/underscore ID (covers att-N, cmt-N, etc.) */
 const SAFE_ID_RE = /^[a-zA-Z0-9_-]{1,64}$/;
 
-export function validateResourceId(value: string): string {
-	if (!SAFE_ID_RE.test(value)) {
+export function validateResourceId(value: string | undefined): string {
+	if (!value || !SAFE_ID_RE.test(value)) {
 		throw new HttpError(400, 'bad_request', 'Invalid resource ID format.');
 	}
 	return value;

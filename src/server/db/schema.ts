@@ -60,9 +60,8 @@ CREATE TABLE IF NOT EXISTS attachments (
   id TEXT PRIMARY KEY,
   grievance_id TEXT NOT NULL REFERENCES grievances(id) ON DELETE CASCADE,
   original_filename TEXT NOT NULL,
-  stored_filename TEXT NOT NULL,
+  url TEXT NOT NULL,
   mime_type TEXT NOT NULL,
-  size_bytes INTEGER NOT NULL,
   created_at TEXT NOT NULL
 );
 

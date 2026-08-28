@@ -52,10 +52,10 @@ export const MOCK_CREDENTIALS = [
 ] as const;
 
 export const MOCK_ATTACHMENTS: Record<string, Attachment> = {
-	'att-1': { id: 'att-1', filename: 'leaking-tap.jpg', sizeBytes: 482_133, contentType: 'image/jpeg' },
-	'att-2': { id: 'att-2', filename: 'corridor-light-off.png', sizeBytes: 1_204_882, contentType: 'image/png' },
-	'att-3': { id: 'att-3', filename: 'wifi-speedtest.png', sizeBytes: 655_360, contentType: 'image/png' },
-	'att-4': { id: 'att-4', filename: 'mess-area.jpg', sizeBytes: 921_600, contentType: 'image/jpeg' }
+	'att-1': { id: 'att-1', filename: 'leaking-tap.jpg', contentType: 'image/jpeg', url: 'https://example.com/leaking-tap.jpg' },
+	'att-2': { id: 'att-2', filename: 'corridor-light-off.png', contentType: 'image/png', url: 'https://example.com/corridor-light-off.png' },
+	'att-3': { id: 'att-3', filename: 'wifi-speedtest.png', contentType: 'image/png', url: 'https://example.com/wifi-speedtest.png' },
+	'att-4': { id: 'att-4', filename: 'mess-area.jpg', contentType: 'image/jpeg', url: 'https://example.com/mess-area.jpg' }
 };
 
 interface SeedComment {

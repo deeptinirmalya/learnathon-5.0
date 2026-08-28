@@ -1,8 +1,8 @@
-import { mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, readdirSync } from 'node:fs';
-import { join, resolve, sep } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { validateFileMime, validateFileSize } from '../validation/validate.ts';
 import { HttpError } from '../http/errors.ts';
+import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME } from '../config.ts';
 
 const MIME_EXTENSION: Record<string, string> = {
 	'image/jpeg': '.jpg',
@@ -12,15 +12,21 @@ const MIME_EXTENSION: Record<string, string> = {
 };
 
 export function ensureUploadsDir(dir: string): void {
-	mkdirSync(dir, { recursive: true });
+	// No-op for R2
 }
 
 export function resetUploadsDir(dir: string): void {
-	if (existsSync(dir)) {
-		rmSync(dir, { recursive: true, force: true });
-	}
-	mkdirSync(dir, { recursive: true });
+	// No-op for R2
 }
+
+const s3Client = new S3Client({
+	region: 'auto',
+	endpoint: `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+	credentials: {
+		accessKeyId: R2_ACCESS_KEY_ID,
+		secretAccessKey: R2_SECRET_ACCESS_KEY
+	}
+});
 
 /** Sanitise the user-supplied filename for display only (never used as stored path). */
 export function originalBasename(filename: string): string {
@@ -38,29 +44,20 @@ export function newStoredName(mime: string): string {
 	return `${randomBytes(16).toString('hex')}${ext}`;
 }
 
-export function writeStoredFile(uploadsDir: string, storedName: string, bytes: Buffer): void {
-	ensureUploadsDir(uploadsDir);
-	writeFileSync(join(uploadsDir, storedName), bytes);
-}
+export async function uploadToR2(storedName: string, bytes: Buffer, mime: string): Promise<void> {
+	const command = new PutObjectCommand({
+		Bucket: R2_BUCKET_NAME,
+		Key: storedName,
+		Body: bytes,
+		ContentType: mime
+	});
 
-export function readStoredFile(uploadsDir: string, storedName: string): Buffer {
-	if (storedName.includes('/') || storedName.includes('\\') || storedName.includes('..')) {
-		throw new HttpError(404, 'not_found', 'Attachment file was not found.');
+	try {
+		await s3Client.send(command);
+	} catch (err) {
+		console.error('Error uploading to R2:', err);
+		throw new HttpError(500, 'internal', 'Failed to upload attachment to storage.');
 	}
-	const root = resolve(uploadsDir);
-	const full = resolve(join(uploadsDir, storedName));
-	if (full !== root && !full.startsWith(root + sep)) {
-		throw new HttpError(404, 'not_found', 'Attachment file was not found.');
-	}
-	if (!existsSync(full)) {
-		throw new HttpError(404, 'not_found', 'Attachment file was not found.');
-	}
-	return readFileSync(full);
-}
-
-export function listStoredNames(uploadsDir: string): string[] {
-	if (!existsSync(uploadsDir)) return [];
-	return readdirSync(uploadsDir).filter((name) => name !== '.gitkeep');
 }
 
 /**

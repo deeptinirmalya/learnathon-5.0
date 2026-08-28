@@ -25,8 +25,8 @@ export interface PublicUser {
 export interface PublicAttachment {
 	id: string;
 	filename: string;
-	sizeBytes: number;
 	contentType: string;
+	url: string;
 }
 
 export interface PublicComment {
@@ -59,6 +59,7 @@ export interface UserRow {
 	password_hash: string;
 	role: Role;
 	room: string | null;
+	token_version: number;
 	created_at: string;
 }
 
@@ -85,9 +86,8 @@ export interface AttachmentRow {
 	id: string;
 	grievance_id: string;
 	original_filename: string;
-	stored_filename: string;
+	url: string;
 	mime_type: string;
-	size_bytes: number;
 	created_at: string;
 }
 
@@ -104,6 +104,8 @@ export type ErrorCode =
 	| 'bad_request'
 	| 'unauthenticated'
 	| 'unauthorized'
+	| 'forbidden'
+	| 'too_many_requests'
 	| 'not_found'
 	| 'conflict'
 	| 'internal';
