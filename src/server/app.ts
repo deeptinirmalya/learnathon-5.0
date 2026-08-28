@@ -6,6 +6,7 @@ import { handleError, HttpError } from './http/errors.ts';
 import { authRoutes } from './routes/auth.ts';
 import { grievanceRoutes } from './routes/grievances.ts';
 import { attachmentRoutes } from './routes/attachments.ts';
+import { rateLimiter } from './http/rate_limit.ts';
 
 export type CreateAppOptions = {
     db: Database;
@@ -59,6 +60,12 @@ export function createApp(options: CreateAppOptions) {
     app.route('/api', authRoutes);
     app.route('/api/grievances', grievanceRoutes);
     app.route('/api/attachments', attachmentRoutes);
+
+    app.get(
+        '/api/public-test',
+        rateLimiter({ maxTokens: 5, refillRate: 1.0, mode: 'ip' }),
+        (c) => c.json({ message: 'Hello from the public rate-limited endpoint!' })
+    );
 
 
     app.all('/api/*', () => {

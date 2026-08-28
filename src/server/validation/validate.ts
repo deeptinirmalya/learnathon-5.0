@@ -168,3 +168,12 @@ export function validateFileSize(size: number): void {
 		throw new HttpError(400, 'bad_request', 'Attachment must be 2 MB or smaller.');
 	}
 }
+
+export function validateName(value: unknown): string {
+	return validateString('Name', value, 2, 80);
+}
+
+export function validateRoom(value: unknown): string | null {
+	if (value === undefined || value === null || value === '') return null;
+	return validateString('Room', value, 2, 20);
+}

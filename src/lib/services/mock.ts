@@ -85,6 +85,18 @@ class MockAuthService implements AuthService {
 		return delay({ ok: true as const, user });
 	}
 
+	async signUp(name: string, email: string, password: string, room: string): Promise<AuthResult> {
+		const id = `stu-${Math.random().toString(36).substring(2, 9)}`;
+		const user: User = { id, name, email, role: 'student', room };
+		this.currentUser = user;
+		try {
+			localStorage.setItem(SESSION_KEY, user.id);
+		} catch {
+			/* ignore */
+		}
+		return delay({ ok: true as const, user });
+	}
+
 	async signOut(): Promise<void> {
 		this.currentUser = null;
 		try {

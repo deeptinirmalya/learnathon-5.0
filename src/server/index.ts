@@ -1,3 +1,6 @@
+// MUST be first import — loads .env before any other module reads process.env
+import './load-env.ts';
+
 import { serve } from '@hono/node-server';
 import { createApp } from './app.ts';
 import { API_PORT, DEFAULT_DB_PATH, DEFAULT_UPLOADS_DIR } from './config.ts';

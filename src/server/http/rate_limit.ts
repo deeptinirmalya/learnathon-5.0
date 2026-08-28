@@ -1,34 +1,15 @@
 import { Redis } from 'ioredis';
 import type { Context, Next } from 'hono';
-import { REDIS_URL } from '../config.ts';
 import { HttpError } from './errors.ts';
 import { getClientInfo } from '../auth/jwt.ts';
 
 // ---------------------------------------------------------------------------
-// 1️⃣ Redis Connection (fails fast if mis-configured)
+// 1️⃣ Lazy Redis Connection — initialized on first request so that .env is
+//    fully loaded before we read REDIS_URL from process.env
 // ---------------------------------------------------------------------------
 let redisClient: Redis | null = null;
-try {
-	redisClient = new Redis(REDIS_URL, {
-		connectTimeout: 1000,
-		commandTimeout: 1000,
-		maxRetriesPerRequest: 1,
-		retryStrategy() {
-			// Don't auto-reconnect endlessly on startup to prevent hanging
-			return null; 
-		}
-	});
+let redisInitialized = false;
 
-	redisClient.on('error', (err) => {
-		console.error(`⚠️ Rate-limiter: Redis connection error – ${err.message}`);
-	});
-} catch (exc) {
-	console.error(`⚠️ Rate-limiter: Redis initialization failed – ${exc}`);
-}
-
-// ---------------------------------------------------------------------------
-// 2️⃣ Lua Script
-// ---------------------------------------------------------------------------
 const LUA_SCRIPT = `
 local key = KEYS[1]
 local max_tokens = tonumber(ARGV[1])
@@ -58,12 +39,33 @@ redis.call("EXPIRE", key, 120)
 return {1, tostring(tokens)}
 `;
 
-if (redisClient) {
-	// Register the script so we can call it via EVALSHA for better performance
-	redisClient.defineCommand('rateLimit', {
-		numberOfKeys: 1,
-		lua: LUA_SCRIPT
-	});
+function getRedisClient(): Redis | null {
+	if (redisInitialized) return redisClient;
+	redisInitialized = true;
+
+	// Read REDIS_URL from process.env at first-use time (after .env is loaded)
+	const redisUrl = process.env.REDIS_URL ?? 'redis://127.0.0.1:6379';
+	try {
+		redisClient = new Redis(redisUrl, {
+			connectTimeout: 10000,
+			commandTimeout: 5000,
+			maxRetriesPerRequest: 1,
+			retryStrategy() {
+				return null; // Don't auto-reconnect endlessly
+			}
+		});
+		redisClient.on('error', (err) => {
+			console.error(`⚠️ Rate-limiter: Redis connection error – ${err.message}`);
+		});
+		redisClient.defineCommand('rateLimit', {
+			numberOfKeys: 1,
+			lua: LUA_SCRIPT
+		});
+	} catch (exc) {
+		console.error(`⚠️ Rate-limiter: Redis initialization failed – ${exc}`);
+		redisClient = null;
+	}
+	return redisClient;
 }
 
 // ---------------------------------------------------------------------------
@@ -84,7 +86,8 @@ export function rateLimiter(options: RateLimiterOptions = {}) {
 	}
 
 	return async (c: Context, next: Next) => {
-		if (!redisClient || redisClient.status !== 'ready') {
+		const redis = getRedisClient();
+		if (!redis) {
 			console.error('Rate-limiter invoked while Redis is unavailable');
 			throw new HttpError(
 				503,
@@ -123,7 +126,7 @@ export function rateLimiter(options: RateLimiterOptions = {}) {
 			try {
 				// We registered 'rateLimit' above, which executes the Lua script
 				// @ts-ignore - custom command added via defineCommand
-				const result = await redisClient.rateLimit(key, maxTokens, refillRate, now) as [number, string];
+				const result = await redis.rateLimit(key, maxTokens, refillRate, now) as [number, string];
 				const allowed = result[0];
 
 				if (allowed === 0) {

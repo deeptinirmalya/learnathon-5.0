@@ -19,6 +19,21 @@ export function findUserById(db: Database, id: string): UserRow | undefined {
 	return db.prepare('SELECT * FROM users WHERE id = ?').get(id) as UserRow | undefined;
 }
 
+export function createUser(
+	db: Database,
+	id: string,
+	name: string,
+	email: string,
+	passwordHash: string,
+	role: 'student' | 'warden',
+	room: string | null
+): void {
+	db.prepare(
+		`INSERT INTO users (id, name, email, password_hash, role, room, token_version, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, 1, datetime('now'))`
+	).run(id, name, email, passwordHash, role, room);
+}
+
 export function userCount(db: Database): number {
 	const row = db.prepare('SELECT COUNT(*) AS n FROM users').get() as { n: number };
 	return row.n;

@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import type { AppEnv } from '../env.ts';
-import { verifyPassword } from '../auth/passwords.ts';
+import { verifyPassword, hashPassword } from '../auth/passwords.ts';
 import {
 	findUserByEmail,
 	logLoginHistory,
@@ -10,11 +10,12 @@ import {
 	incrementUserTokenVersion,
 	getRefreshTokensForUser,
 	revokeRefreshToken,
-	findUserById
+	findUserById,
+	createUser
 } from '../db/queries.ts';
 import { toPublicUser } from '../db/map.ts';
 import { HttpError } from '../http/errors.ts';
-import { validateEmail, validatePassword } from '../validation/validate.ts';
+import { validateEmail, validatePassword, validateName, validateRoom } from '../validation/validate.ts';
 import { randomUUID } from 'node:crypto';
 import {
 	createAccessToken,
@@ -232,4 +233,40 @@ authRoutes.get('/me', async (c) => {
 	const db = c.get('db');
 	const user = await requireJwtAuth(c, db);
 	return c.json({ user: toPublicUser(user as any) });
+});
+
+authRoutes.post('/signup', rateLimiter({ maxTokens: 5, refillRate: 0.1, mode: 'ip' }), async (c) => {
+	const db = c.get('db');
+	let body: unknown;
+	try {
+		body = await c.req.json();
+	} catch {
+		throw new HttpError(400, 'bad_request', 'Request body must be JSON.');
+	}
+	if (!body || typeof body !== 'object') {
+		throw new HttpError(400, 'bad_request', 'Request body must be JSON.');
+	}
+
+	const name = validateName('name' in body ? body.name : undefined);
+	const email = validateEmail('email' in body ? body.email : undefined);
+	const password = validatePassword('password' in body ? body.password : undefined);
+	const room = validateRoom('room' in body ? body.room : undefined);
+
+	// Check if user already exists
+	const existing = findUserByEmail(db, email);
+	if (existing) {
+		throw new HttpError(409, 'conflict', 'A user with this email address already exists.');
+	}
+
+	const id = `stu-${randomUUID().slice(0, 8)}`;
+	const passwordHash = hashPassword(password);
+
+	createUser(db, id, name, email, passwordHash, 'student', room);
+
+	const newUser = findUserById(db, id);
+	if (!newUser) {
+		throw new HttpError(500, 'internal', 'Failed to create user account.');
+	}
+
+	return c.json({ success: true, user: toPublicUser(newUser) }, 201);
 });

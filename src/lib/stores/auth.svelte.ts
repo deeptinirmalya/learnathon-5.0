@@ -6,12 +6,11 @@
 import { authService } from '$lib/services';
 import type { User } from '$lib/types';
 
-// Restored synchronously (mock: localStorage) so route guards can rely on it
-// during the very first load without an async race.
-let current = $state<User | null>(authService.restore());
+const initialUser = authService.restore();
+let current = $state<User | null>(initialUser);
 
 // Background verification: verify the cached session against the server
-if (typeof window !== 'undefined' && current) {
+if (typeof window !== 'undefined' && initialUser) {
 	fetch('/api/me')
 		.then((res) => {
 			if (!res.ok) {
@@ -50,6 +49,20 @@ export function isWarden(): boolean {
 
 export async function signIn(email: string, password: string): Promise<{ ok: boolean; error?: string }> {
 	const result = await authService.signIn(email, password);
+	if (result.ok) {
+		current = result.user;
+		return { ok: true };
+	}
+	return { ok: false, error: result.error };
+}
+
+export async function signUp(
+	name: string,
+	email: string,
+	password: string,
+	room: string
+): Promise<{ ok: boolean; error?: string }> {
+	const result = await authService.signUp(name, email, password, room);
 	if (result.ok) {
 		current = result.user;
 		return { ok: true };

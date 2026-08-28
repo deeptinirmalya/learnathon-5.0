@@ -32,6 +32,8 @@ export interface CreateGrievanceInput {
 export interface AuthService {
 	/** Validate credentials and return the session user (mock-only). */
 	signIn(email: string, password: string): Promise<AuthResult>;
+	/** Register a new student account. */
+	signUp(name: string, email: string, password: string, room: string): Promise<AuthResult>;
 	/** End the session. */
 	signOut(): Promise<void>;
 	/**

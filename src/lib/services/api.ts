@@ -45,6 +45,19 @@ class ApiAuthService implements AuthService {
 		return { ok: true, user };
 	}
 
+	async signUp(name: string, email: string, password: string, room: string): Promise<AuthResult> {
+		const res = await fetch('/api/signup', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ name, email, password, room })
+		});
+		const json = await readJson(res);
+		if (!res.ok) {
+			return { ok: false, error: errorMessage(json, 'Registration failed.') };
+		}
+		return this.signIn(email, password);
+	}
+
 	async signOut(): Promise<void> {
 		this.currentUser = null;
 		try {

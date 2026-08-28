@@ -12,7 +12,7 @@ export const ssr = false;
 export const load: LayoutLoad = ({ url }) => {
 	const user = getSession();
 
-	if (url.pathname === '/login') {
+	if (url.pathname === '/login' || url.pathname === '/signup') {
 		if (user) {
 			redirect(307, user.role === 'student' ? '/student' : '/warden');
 		}
