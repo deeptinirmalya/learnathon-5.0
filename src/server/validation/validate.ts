@@ -42,7 +42,7 @@ export function validateString(field: string, value: unknown, min: number, max: 
 // ─── Email ────────────────────────────────────────────────────────────────────
 
 /** Basic RFC-5321 shape: local@domain.tld — no whitespace, max 254 chars. */
-const EMAIL_RE = /^[^\s@]{1,64}@[^\s@]{1,255}\.[^\s@]{1,63}$/;
+const EMAIL_RE = /^[^\s@]{1,24}@giet.edu/;
 
 export function validateEmail(value: unknown): string {
 	const s = validateString('Email', value, 3, 254);
@@ -56,7 +56,10 @@ export function validateEmail(value: unknown): string {
 
 /** Passwords are NOT trimmed — leading/trailing spaces are intentional. */
 export function validatePassword(value: unknown): string {
-	if (typeof value !== 'string') {
+	if(value === undefined || value === null) {
+		throw new HttpError(400, 'bad_request', 'Password is required.');
+	}
+	else if (typeof value !== 'string') {
 		throw new HttpError(400, 'bad_request', 'Password must be a string.');
 	}
 	if (value.length < 6) {
