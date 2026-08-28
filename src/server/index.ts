@@ -15,7 +15,7 @@ const uploadsDir = DEFAULT_UPLOADS_DIR;
 ensureUploadsDir(uploadsDir);
 const db = openDatabase(dbPath);
 if (userCount(db) === 0) {
-	seedDatabase(db, uploadsDir);
+	seedDatabase(db);
 	console.log(`Seeded database at ${dbPath}`);
 }
 

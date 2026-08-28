@@ -52,7 +52,9 @@
 				<PaperclipIcon class="text-muted-foreground size-4 shrink-0" aria-hidden="true" />
 				<div class="min-w-0">
 					<p class="truncate text-sm font-medium">{selected.filename}</p>
-					<p class="text-muted-foreground text-xs">{formatSize(selected.sizeBytes)}</p>
+					{#if selected.file}
+						<p class="text-muted-foreground text-xs">{formatSize(selected.file.size)}</p>
+					{/if}
 				</div>
 			</div>
 			<Button

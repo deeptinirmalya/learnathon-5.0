@@ -7,6 +7,8 @@ import { authRoutes } from './routes/auth.ts';
 import { grievanceRoutes } from './routes/grievances.ts';
 import { attachmentRoutes } from './routes/attachments.ts';
 import { rateLimiter } from './http/rate_limit.ts';
+import { bodyLimit } from 'hono/body-limit';
+import { MAX_ATTACHMENT_BYTES } from './config.ts';
 
 export type CreateAppOptions = {
     db: Database;
@@ -58,6 +60,17 @@ export function createApp(options: CreateAppOptions) {
     app.notFound((c) => c.json({ error: 'Not found.', code: 'not_found' }, 404));
 
     app.route('/api', authRoutes);
+
+    app.use(
+        '/api/grievances/*',
+        bodyLimit({
+            maxSize: MAX_ATTACHMENT_BYTES,
+            onError: (c) => {
+                return c.json({ error: 'Payload too large. Attachment must be 2 MB or smaller.', code: 'bad_request' }, 400);
+            }
+        })
+    );
+
     app.route('/api/grievances', grievanceRoutes);
     app.route('/api/attachments', attachmentRoutes);
 

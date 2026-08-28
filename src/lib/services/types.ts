@@ -15,7 +15,6 @@ import type {
 
 export interface AttachmentInput {
 	filename: string;
-	sizeBytes: number;
 	contentType: string;
 	/** Present when filing against the live API; ignored by the in-memory mock. */
 	file?: File;

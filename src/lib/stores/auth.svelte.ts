@@ -3,22 +3,20 @@
  * Single source of truth for "who is logged in" across the UI.
  * The future Hono API replaces the backing service, not this module's API.
  */
-import { authService } from '$lib/services';
+import { authService, apiFetch, resetRedirecting } from '$lib/services/api';
 import type { User } from '$lib/types';
 
 const initialUser = authService.restore();
 let current = $state<User | null>(initialUser);
 
-// Background verification: verify the cached session against the server
+// Background verification: verify the cached session against the server.
+// apiFetch will transparently attempt a token refresh on 401 before giving up.
 if (typeof window !== 'undefined' && initialUser) {
-	fetch('/api/me')
+	apiFetch('/api/me')
 		.then((res) => {
 			if (!res.ok) {
+				// apiFetch already cleared localStorage + redirected on refresh failure.
 				current = null;
-				localStorage.removeItem('hg.session.user');
-				if (window.location.pathname !== '/login') {
-					window.location.href = '/login';
-				}
 				return;
 			}
 			return res.json();
@@ -31,7 +29,7 @@ if (typeof window !== 'undefined' && initialUser) {
 			}
 		})
 		.catch(() => {
-			// Fail-safe: if network is down we can temporarily keep using local session
+			// Fail-safe: if network is down, keep using local session temporarily
 		});
 }
 
@@ -51,6 +49,7 @@ export async function signIn(email: string, password: string): Promise<{ ok: boo
 	const result = await authService.signIn(email, password);
 	if (result.ok) {
 		current = result.user;
+		resetRedirecting();
 		return { ok: true };
 	}
 	return { ok: false, error: result.error };

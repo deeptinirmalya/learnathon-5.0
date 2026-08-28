@@ -1,8 +1,8 @@
-import { mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, readdirSync } from 'node:fs';
-import { join, resolve, sep } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { validateFileMime, validateFileSize } from '../validation/validate.ts';
 import { HttpError } from '../http/errors.ts';
+import { v2 as cloudinary } from 'cloudinary';
+import { CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET } from '../config.ts';
 
 const MIME_EXTENSION: Record<string, string> = {
 	'image/jpeg': '.jpg',
@@ -12,15 +12,18 @@ const MIME_EXTENSION: Record<string, string> = {
 };
 
 export function ensureUploadsDir(dir: string): void {
-	mkdirSync(dir, { recursive: true });
+	// No-op for R2
 }
 
 export function resetUploadsDir(dir: string): void {
-	if (existsSync(dir)) {
-		rmSync(dir, { recursive: true, force: true });
-	}
-	mkdirSync(dir, { recursive: true });
+	// No-op for R2
 }
+
+cloudinary.config({
+	cloud_name: CLOUDINARY_CLOUD_NAME,
+	api_key: CLOUDINARY_API_KEY,
+	api_secret: CLOUDINARY_API_SECRET
+});
 
 /** Sanitise the user-supplied filename for display only (never used as stored path). */
 export function originalBasename(filename: string): string {
@@ -38,29 +41,24 @@ export function newStoredName(mime: string): string {
 	return `${randomBytes(16).toString('hex')}${ext}`;
 }
 
-export function writeStoredFile(uploadsDir: string, storedName: string, bytes: Buffer): void {
-	ensureUploadsDir(uploadsDir);
-	writeFileSync(join(uploadsDir, storedName), bytes);
-}
-
-export function readStoredFile(uploadsDir: string, storedName: string): Buffer {
-	if (storedName.includes('/') || storedName.includes('\\') || storedName.includes('..')) {
-		throw new HttpError(404, 'not_found', 'Attachment file was not found.');
-	}
-	const root = resolve(uploadsDir);
-	const full = resolve(join(uploadsDir, storedName));
-	if (full !== root && !full.startsWith(root + sep)) {
-		throw new HttpError(404, 'not_found', 'Attachment file was not found.');
-	}
-	if (!existsSync(full)) {
-		throw new HttpError(404, 'not_found', 'Attachment file was not found.');
-	}
-	return readFileSync(full);
-}
-
-export function listStoredNames(uploadsDir: string): string[] {
-	if (!existsSync(uploadsDir)) return [];
-	return readdirSync(uploadsDir).filter((name) => name !== '.gitkeep');
+export async function uploadToCloudinary(storedName: string, bytes: Buffer, mime: string): Promise<string> {
+	return new Promise((resolve, reject) => {
+		const uploadStream = cloudinary.uploader.upload_stream(
+			{
+				public_id: storedName.split('.')[0], // usually best to exclude extension for Cloudinary public_id
+				resource_type: 'auto'
+			},
+			(error, result) => {
+				if (error || !result) {
+					console.error('Error uploading to Cloudinary:', error);
+					reject(new HttpError(500, 'internal', 'Failed to upload attachment to storage.'));
+				} else {
+					resolve(result.secure_url);
+				}
+			}
+		);
+		uploadStream.end(bytes);
+	});
 }
 
 /**

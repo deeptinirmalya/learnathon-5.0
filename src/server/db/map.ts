@@ -28,8 +28,8 @@ export function toPublicAttachment(row: AttachmentRow): PublicAttachment {
 	return {
 		id: row.id,
 		filename: row.original_filename,
-		sizeBytes: row.size_bytes,
-		contentType: row.mime_type
+		contentType: row.mime_type,
+		url: row.url
 	};
 }
 

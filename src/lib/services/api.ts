@@ -21,6 +21,66 @@ function errorMessage(json: Record<string, unknown>, fallback: string): string {
 	return typeof json.error === 'string' ? json.error : fallback;
 }
 
+/** A single in-flight refresh promise shared across concurrent requests. */
+let refreshPromise: Promise<boolean> | null = null;
+
+/** Set to true once a redirect to /login has been initiated, to avoid loops. */
+let redirecting = false;
+
+function redirectToLogin() {
+	if (redirecting) return;
+	redirecting = true;
+	try {
+		localStorage.removeItem(SESSION_KEY);
+	} catch {
+		/* ignore */
+	}
+	if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+		window.location.href = '/login';
+	}
+}
+
+/** Reset state after a successful sign-in so the interceptor works again. */
+export function resetRedirecting() {
+	redirecting = false;
+}
+
+/**
+ * Drop-in replacement for `fetch` that transparently handles expired access tokens.
+ * On a 401 it calls POST /api/refresh once (deduplicating concurrent callers);
+ * if that succeeds it retries the original request.
+ * If refresh also fails the user is redirected to /login.
+ */
+export async function apiFetch(input: string, init?: RequestInit): Promise<Response> {
+	const res = await fetch(input, { credentials: 'include', ...init });
+
+	if (res.status !== 401) return res;
+
+	// Only one refresh call in flight at a time — all concurrent 401s share it.
+	if (!refreshPromise) {
+		refreshPromise = fetch('/api/refresh', { method: 'POST', credentials: 'include' })
+			.then((r) => r.ok)
+			.catch(() => false)
+			.finally(() => {
+				refreshPromise = null;
+			});
+	}
+
+	const refreshed = await refreshPromise;
+
+	if (!refreshed) {
+		redirectToLogin();
+		// Return a synthetic 401 so callers don't try to parse a consumed body
+		return new Response(JSON.stringify({ error: 'Session expired.' }), {
+			status: 401,
+			headers: { 'Content-Type': 'application/json' }
+		});
+	}
+
+	// Retry the original request — cookies are now updated by the browser
+	return fetch(input, { credentials: 'include', ...init });
+}
+
 class ApiAuthService implements AuthService {
 	private currentUser: User | null = null;
 
@@ -105,7 +165,7 @@ class ApiGrievanceService implements GrievanceService {
 	}
 
 	private async list(): Promise<Result<Grievance[]>> {
-		const res = await fetch('/api/grievances', { credentials: 'include' });
+		const res = await apiFetch('/api/grievances', { credentials: 'include' });
 		const json = await readJson(res);
 		if (!res.ok) {
 			return { ok: false, error: errorMessage(json, 'Could not load grievances.') };
@@ -114,7 +174,7 @@ class ApiGrievanceService implements GrievanceService {
 	}
 
 	async getById(id: string): Promise<Result<Grievance>> {
-		const res = await fetch(`/api/grievances/${encodeURIComponent(id)}`, { credentials: 'include' });
+		const res = await apiFetch(`/api/grievances/${encodeURIComponent(id)}`, { credentials: 'include' });
 		return grievanceResult(res);
 	}
 
@@ -127,9 +187,9 @@ class ApiGrievanceService implements GrievanceService {
 			form.set('category', input.category);
 			form.set('description', input.description);
 			form.set('file', file);
-			res = await fetch('/api/grievances', { method: 'POST', credentials: 'include', body: form });
+			res = await apiFetch('/api/grievances', { method: 'POST', credentials: 'include', body: form });
 		} else {
-			res = await fetch('/api/grievances', {
+			res = await apiFetch('/api/grievances', {
 				method: 'POST',
 				credentials: 'include',
 				headers: { 'Content-Type': 'application/json' },
@@ -144,7 +204,7 @@ class ApiGrievanceService implements GrievanceService {
 	}
 
 	async updateStatus(id: string, status: GrievanceStatus): Promise<Result<Grievance>> {
-		const res = await fetch(`/api/grievances/${encodeURIComponent(id)}`, {
+		const res = await apiFetch(`/api/grievances/${encodeURIComponent(id)}`, {
 			method: 'PATCH',
 			credentials: 'include',
 			headers: { 'Content-Type': 'application/json' },
@@ -156,7 +216,7 @@ class ApiGrievanceService implements GrievanceService {
 
 class ApiCommentService implements CommentService {
 	async add(grievanceId: string, _authorId: string, body: string): Promise<Result<Comment>> {
-		const res = await fetch(`/api/grievances/${encodeURIComponent(grievanceId)}/comments`, {
+		const res = await apiFetch(`/api/grievances/${encodeURIComponent(grievanceId)}/comments`, {
 			method: 'POST',
 			credentials: 'include',
 			headers: { 'Content-Type': 'application/json' },

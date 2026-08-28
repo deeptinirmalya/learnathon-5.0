@@ -172,8 +172,8 @@ class MockGrievanceService implements GrievanceService {
 					{
 						id: `att-${id.toLowerCase()}-1`,
 						filename: input.attachment.filename,
-						sizeBytes: input.attachment.sizeBytes,
-						contentType: input.attachment.contentType
+						contentType: input.attachment.contentType,
+						url: `https://example.com/mock-attachments/${input.attachment.filename}`
 					}
 				]
 			: [];

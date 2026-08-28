@@ -22,7 +22,7 @@ import {
 	bufferFromUpload,
 	newStoredName,
 	originalBasename,
-	writeStoredFile
+	uploadToCloudinary
 } from '../storage/attachments.ts';
 import { rateLimiter } from '../http/rate_limit.ts';
 import {
@@ -33,6 +33,7 @@ import {
 	validateString,
 	validateTitle
 } from '../validation/validate.ts';
+
 
 function nowIso(): string {
 	return new Date().toISOString();
@@ -99,31 +100,37 @@ grievanceRoutes.post('/', rateLimiter({ maxTokens: 10, refillRate: 0.5, mode: 'b
 	const description = validateDescription(rawDescription);
 	const category = parseCategory(validateString('Category', rawCategory, 1, 64));
 
-	const id = nextGrievanceId(db);
-	const ts = nowIso();
-	db.prepare(
-		`INSERT INTO grievances (id, student_id, title, category, description, status, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, 'open', ?, ?)`
-	).run(id, user.id, title, category, description, ts, ts);
-
+	let validatedFile: { bytes: Buffer; mime: string; url: string; original: string } | null = null;
 	if (upload) {
-		// ── Validate file: size + magic-byte MIME detection ───────────────────
 		const { bytes, mime } = await bufferFromUpload(upload);
 		const stored = newStoredName(mime);
-		writeStoredFile(uploadsDir, stored, bytes);
-		db.prepare(
-			`INSERT INTO attachments (id, grievance_id, original_filename, stored_filename, mime_type, size_bytes, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
-		).run(
-			nextAttachmentId(db),
-			id,
-			originalBasename(upload.name),
-			stored,
-			mime,
-			bytes.byteLength,
-			ts
-		);
+		const fileUrl = await uploadToCloudinary(stored, bytes, mime);
+		validatedFile = { bytes, mime, url: fileUrl, original: originalBasename(upload.name) };
 	}
+
+	const id = nextGrievanceId(db);
+	const ts = nowIso();
+	
+	db.transaction(() => {
+		db.prepare(
+			`INSERT INTO grievances (id, student_id, title, category, description, status, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, 'open', ?, ?)`
+		).run(id, user.id, title, category, description, ts, ts);
+
+		if (validatedFile) {
+			db.prepare(
+				`INSERT INTO attachments (id, grievance_id, original_filename, url, mime_type, created_at)
+		   VALUES (?, ?, ?, ?, ?, ?)`
+			).run(
+				nextAttachmentId(db),
+				id,
+				validatedFile.original,
+				validatedFile.url,
+				validatedFile.mime,
+				ts
+			);
+		}
+	})();
 
 	return c.json({ data: assembleGrievance(db, requireGrievance(db, id)) }, 201);
 });
@@ -132,7 +139,7 @@ grievanceRoutes.post('/', rateLimiter({ maxTokens: 10, refillRate: 0.5, mode: 'b
 
 grievanceRoutes.get('/:id/comments', async (c) => {
 	const db = c.get('db');
-	await requireJwtAuth(c, db);
+	const user = await requireJwtAuth(c, db);
 	const grievanceId = validateGrievanceId(c.req.param('id'));
 	const row = requireGrievance(db, grievanceId);
 	// Check authorization
@@ -211,17 +218,18 @@ grievanceRoutes.post('/:id/attachments', rateLimiter({ maxTokens: 10, refillRate
 		throw new HttpError(400, 'bad_request', 'A file field named file is required.');
 	}
 
-	// ── Validate file: size + magic-byte MIME detection ───────────────────────
 	const { bytes, mime } = await bufferFromUpload(upload);
 	const stored = newStoredName(mime);
+	const fileUrl = await uploadToCloudinary(stored, bytes, mime);
 	const ts = nowIso();
-	writeStoredFile(c.get('uploadsDir'), stored, bytes);
 	const id = nextAttachmentId(db);
-	db.prepare(
-		`INSERT INTO attachments (id, grievance_id, original_filename, stored_filename, mime_type, size_bytes, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`
-	).run(id, row.id, originalBasename(upload.name), stored, mime, bytes.byteLength, ts);
-	touchGrievance(db, row.id, ts);
+	db.transaction(() => {
+		db.prepare(
+			`INSERT INTO attachments (id, grievance_id, original_filename, url, mime_type, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?)`
+		).run(id, row.id, originalBasename(upload.name), fileUrl, mime, ts);
+		touchGrievance(db, row.id, ts);
+	})();
 	const saved = db.prepare('SELECT * FROM attachments WHERE id = ?').get(id) as AttachmentRow;
 	return c.json({ data: toPublicAttachment(saved) }, 201);
 });

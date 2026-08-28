@@ -1,28 +1,24 @@
 import { Hono } from 'hono';
 import type { AppEnv } from '../env.ts';
 import { requireJwtAuth } from '../auth/jwt.ts';
-import { findAttachmentRow, requireGrievance } from '../db/queries.ts';
-import { readStoredFile } from '../storage/attachments.ts';
+import { findAttachmentRow, requireGrievance, assertCanViewGrievance } from '../db/queries.ts';
 import { HttpError } from '../http/errors.ts';
 import { validateResourceId } from '../validation/validate.ts';
+
 
 export const attachmentRoutes = new Hono<AppEnv>();
 
 attachmentRoutes.get('/:id', async (c) => {
 	const db = c.get('db');
-	await requireJwtAuth(c, db);
+	const user = await requireJwtAuth(c, db);
 	const attachmentId = validateResourceId(c.req.param('id'));
 	const row = findAttachmentRow(db, attachmentId);
 	if (!row) {
 		throw new HttpError(404, 'not_found', 'Attachment was not found.');
 	}
-	requireGrievance(db, row.grievance_id);
-	const bytes = readStoredFile(c.get('uploadsDir'), row.stored_filename);
-	c.header('Content-Type', row.mime_type);
-	c.header('Content-Length', String(bytes.length));
-	c.header(
-		'Content-Disposition',
-		`inline; filename="${row.original_filename.replaceAll('"', '')}"`
-	);
-	return c.body(new Uint8Array(bytes));
+	
+	const grievance = requireGrievance(db, row.grievance_id);
+	assertCanViewGrievance(user as any, grievance);
+	
+	return c.redirect(row.url);
 });

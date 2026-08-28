@@ -15,7 +15,7 @@ export function resetDatabase(dbPath = DEFAULT_DB_PATH, uploadsDir = DEFAULT_UPL
 	removeIfExists(`${dbPath}-shm`);
 	resetUploadsDir(uploadsDir);
 	const db = openDatabase(dbPath);
-	seedDatabase(db, uploadsDir);
+	seedDatabase(db);
 	db.close();
 }
 

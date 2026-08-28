@@ -1,24 +1,9 @@
-import { writeFileSync } from 'node:fs';
-import { join } from 'node:path';
 import type { Database } from 'better-sqlite3';
 import { hashPassword } from '../auth/passwords.ts';
-import { ensureUploadsDir, newStoredName } from '../storage/attachments.ts';
 import { SEED_STUDENT_PASSWORD, SEED_WARDEN_PASSWORD } from '../config.ts';
 
-/** 1×1 PNG */
-const PNG = Buffer.from(
-	'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
-	'base64'
-);
 
-/** Minimal JPEG */
-const JPEG = Buffer.from(
-	'/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIQAxAAAAG/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPwB//9k=',
-	'base64'
-);
-
-export function seedDatabase(db: Database, uploadsDir: string): void {
-	ensureUploadsDir(uploadsDir);
+export function seedDatabase(db: Database): void {
 	const studentHash = hashPassword(SEED_STUDENT_PASSWORD);
 	const wardenHash = hashPassword(SEED_WARDEN_PASSWORD);
 
@@ -241,8 +226,8 @@ export function seedDatabase(db: Database, uploadsDir: string): void {
 	];
 
 	const insertAttachment = db.prepare(
-		`INSERT INTO attachments (id, grievance_id, original_filename, stored_filename, mime_type, size_bytes, created_at)
-     VALUES (@id, @grievance_id, @original_filename, @stored_filename, @mime_type, @size_bytes, @created_at)`
+		`INSERT INTO attachments (id, grievance_id, original_filename, url, mime_type, created_at)
+     VALUES (@id, @grievance_id, @original_filename, @url, @mime_type, @created_at)`
 	);
 
 	db.transaction(() => {
@@ -255,48 +240,38 @@ export function seedDatabase(db: Database, uploadsDir: string): void {
 				id: 'att-1',
 				grievance_id: 'GRV-0001',
 				original_filename: 'leaking-tap.jpg',
+				url: 'https://res.cloudinary.com/demo/image/upload/sample.jpg',
 				mime_type: 'image/jpeg',
-				bytes: JPEG,
 				created_at: '2026-08-13T09:15:00.000Z'
 			},
 			{
 				id: 'att-2',
 				grievance_id: 'GRV-0002',
 				original_filename: 'corridor-light-off.png',
+				url: 'https://res.cloudinary.com/demo/image/upload/sample.png',
 				mime_type: 'image/png',
-				bytes: PNG,
 				created_at: '2026-08-14T18:30:00.000Z'
 			},
 			{
 				id: 'att-3',
 				grievance_id: 'GRV-0003',
 				original_filename: 'wifi-speedtest.png',
+				url: 'https://res.cloudinary.com/demo/image/upload/sample.png',
 				mime_type: 'image/png',
-				bytes: PNG,
 				created_at: '2026-08-15T20:10:00.000Z'
 			},
 			{
 				id: 'att-4',
 				grievance_id: 'GRV-0008',
 				original_filename: 'mess-area.jpg',
+				url: 'https://res.cloudinary.com/demo/image/upload/sample.jpg',
 				mime_type: 'image/jpeg',
-				bytes: JPEG,
 				created_at: '2026-08-19T13:05:00.000Z'
 			}
 		];
 
 		for (const file of files) {
-			const stored = newStoredName(file.mime_type);
-			writeFileSync(join(uploadsDir, stored), file.bytes);
-			insertAttachment.run({
-				id: file.id,
-				grievance_id: file.grievance_id,
-				original_filename: file.original_filename,
-				stored_filename: stored,
-				mime_type: file.mime_type,
-				size_bytes: file.bytes.byteLength,
-				created_at: file.created_at
-			});
+			insertAttachment.run(file);
 		}
 	})();
 }

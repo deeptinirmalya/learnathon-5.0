@@ -38,7 +38,6 @@
 	function handleSelectFile(file: File) {
 		attachment = {
 			filename: file.name,
-			sizeBytes: file.size,
 			contentType: file.type || 'application/octet-stream',
 			file
 		};

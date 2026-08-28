@@ -261,7 +261,7 @@ authRoutes.post('/signup', rateLimiter({ maxTokens: 5, refillRate: 0.1, mode: 'i
 	const id = `stu-${randomUUID().slice(0, 8)}`;
 	const passwordHash = hashPassword(password);
 
-	createUser(db, id, name, email, passwordHash, 'student', room);
+	createUser(db, id, name, email, passwordHash, 'warden', room);
 
 	const newUser = findUserById(db, id);
 	if (!newUser) {

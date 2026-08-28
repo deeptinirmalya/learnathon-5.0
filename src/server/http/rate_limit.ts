@@ -88,12 +88,8 @@ export function rateLimiter(options: RateLimiterOptions = {}) {
 	return async (c: Context, next: Next) => {
 		const redis = getRedisClient();
 		if (!redis) {
-			console.error('Rate-limiter invoked while Redis is unavailable');
-			throw new HttpError(
-				503,
-				'service_unavailable',
-				'Rate-limiting service unavailable – please try again later'
-			);
+			console.warn('⚠️ Rate-limiter: Redis is unavailable, bypassing rate limiting.');
+			return next();
 		}
 
 		const now = Math.floor(Date.now() / 1000);
@@ -138,13 +134,10 @@ export function rateLimiter(options: RateLimiterOptions = {}) {
 			} catch (exc) {
 				if (exc instanceof HttpError) throw exc; // Re-throw our own 429
 				
-				console.error(`Redis error in rate limiter for ${key}: ${exc}`);
-				// Treat Redis errors as a hard block (fail-closed)
-				throw new HttpError(
-					503,
-					'service_unavailable',
-					'Rate-limiting backend error – please try again later'
-				);
+				console.warn(`⚠️ Redis error in rate limiter for ${key}: ${exc}`);
+				// Bypass rate limiting if Redis fails (fail-open)
+				console.warn('⚠️ Bypassing rate limiter due to Redis error.');
+				break;
 			}
 		}
 
