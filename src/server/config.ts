@@ -35,12 +35,10 @@ export const REDIS_URL = process.env.REDIS_URL ?? 'redis://127.0.0.1:6379';
 export const SEED_STUDENT_PASSWORD = process.env.SEED_STUDENT_PASSWORD ?? 'SecureStudentPass123!';
 export const SEED_WARDEN_PASSWORD = process.env.SEED_WARDEN_PASSWORD ?? 'SecureWardenPass123!';
 
-// --- Cloudflare R2 Config ---
-export const R2_ACCOUNT_ID = process.env.R2_ACCOUNT_ID ?? '';
-export const R2_ACCESS_KEY_ID = process.env.R2_ACCESS_KEY_ID ?? '';
-export const R2_SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY ?? '';
-export const R2_BUCKET_NAME = process.env.R2_BUCKET_NAME ?? '';
-export const R2_PUBLIC_DOMAIN = process.env.R2_PUBLIC_DOMAIN ?? '';
+// --- Cloudinary Config ---
+export const CLOUDINARY_CLOUD_NAME = process.env.CLOUDINARY_CLOUD_NAME ?? '';
+export const CLOUDINARY_API_KEY = process.env.CLOUDINARY_API_KEY ?? '';
+export const CLOUDINARY_API_SECRET = process.env.CLOUDINARY_API_SECRET ?? '';
 
 
 const IS_DEV = process.env.NODE_ENV !== 'production';

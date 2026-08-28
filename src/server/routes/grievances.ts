@@ -22,7 +22,7 @@ import {
 	bufferFromUpload,
 	newStoredName,
 	originalBasename,
-	uploadToR2
+	uploadToCloudinary
 } from '../storage/attachments.ts';
 import { rateLimiter } from '../http/rate_limit.ts';
 import {
@@ -33,7 +33,7 @@ import {
 	validateString,
 	validateTitle
 } from '../validation/validate.ts';
-import { R2_PUBLIC_DOMAIN } from '../config.ts';
+
 
 function nowIso(): string {
 	return new Date().toISOString();
@@ -104,8 +104,7 @@ grievanceRoutes.post('/', rateLimiter({ maxTokens: 10, refillRate: 0.5, mode: 'b
 	if (upload) {
 		const { bytes, mime } = await bufferFromUpload(upload);
 		const stored = newStoredName(mime);
-		await uploadToR2(stored, bytes, mime);
-		const fileUrl = `https://${R2_PUBLIC_DOMAIN}/${stored}`;
+		const fileUrl = await uploadToCloudinary(stored, bytes, mime);
 		validatedFile = { bytes, mime, url: fileUrl, original: originalBasename(upload.name) };
 	}
 
@@ -221,8 +220,7 @@ grievanceRoutes.post('/:id/attachments', rateLimiter({ maxTokens: 10, refillRate
 
 	const { bytes, mime } = await bufferFromUpload(upload);
 	const stored = newStoredName(mime);
-	await uploadToR2(stored, bytes, mime);
-	const fileUrl = `https://${R2_PUBLIC_DOMAIN}/${stored}`;
+	const fileUrl = await uploadToCloudinary(stored, bytes, mime);
 	const ts = nowIso();
 	const id = nextAttachmentId(db);
 	db.transaction(() => {

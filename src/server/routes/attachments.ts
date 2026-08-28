@@ -4,7 +4,7 @@ import { requireJwtAuth } from '../auth/jwt.ts';
 import { findAttachmentRow, requireGrievance, assertCanViewGrievance } from '../db/queries.ts';
 import { HttpError } from '../http/errors.ts';
 import { validateResourceId } from '../validation/validate.ts';
-import { R2_PUBLIC_DOMAIN } from '../config.ts';
+
 
 export const attachmentRoutes = new Hono<AppEnv>();
 

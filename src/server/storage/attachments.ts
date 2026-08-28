@@ -1,8 +1,8 @@
 import { randomBytes } from 'node:crypto';
 import { validateFileMime, validateFileSize } from '../validation/validate.ts';
 import { HttpError } from '../http/errors.ts';
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
-import { R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME } from '../config.ts';
+import { v2 as cloudinary } from 'cloudinary';
+import { CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET } from '../config.ts';
 
 const MIME_EXTENSION: Record<string, string> = {
 	'image/jpeg': '.jpg',
@@ -19,13 +19,10 @@ export function resetUploadsDir(dir: string): void {
 	// No-op for R2
 }
 
-const s3Client = new S3Client({
-	region: 'auto',
-	endpoint: `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
-	credentials: {
-		accessKeyId: R2_ACCESS_KEY_ID,
-		secretAccessKey: R2_SECRET_ACCESS_KEY
-	}
+cloudinary.config({
+	cloud_name: CLOUDINARY_CLOUD_NAME,
+	api_key: CLOUDINARY_API_KEY,
+	api_secret: CLOUDINARY_API_SECRET
 });
 
 /** Sanitise the user-supplied filename for display only (never used as stored path). */
@@ -44,20 +41,24 @@ export function newStoredName(mime: string): string {
 	return `${randomBytes(16).toString('hex')}${ext}`;
 }
 
-export async function uploadToR2(storedName: string, bytes: Buffer, mime: string): Promise<void> {
-	const command = new PutObjectCommand({
-		Bucket: R2_BUCKET_NAME,
-		Key: storedName,
-		Body: bytes,
-		ContentType: mime
+export async function uploadToCloudinary(storedName: string, bytes: Buffer, mime: string): Promise<string> {
+	return new Promise((resolve, reject) => {
+		const uploadStream = cloudinary.uploader.upload_stream(
+			{
+				public_id: storedName.split('.')[0], // usually best to exclude extension for Cloudinary public_id
+				resource_type: 'auto'
+			},
+			(error, result) => {
+				if (error || !result) {
+					console.error('Error uploading to Cloudinary:', error);
+					reject(new HttpError(500, 'internal', 'Failed to upload attachment to storage.'));
+				} else {
+					resolve(result.secure_url);
+				}
+			}
+		);
+		uploadStream.end(bytes);
 	});
-
-	try {
-		await s3Client.send(command);
-	} catch (err) {
-		console.error('Error uploading to R2:', err);
-		throw new HttpError(500, 'internal', 'Failed to upload attachment to storage.');
-	}
 }
 
 /**
