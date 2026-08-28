@@ -13,10 +13,6 @@ export const DEFAULT_UPLOADS_DIR =
 
 export const API_PORT = Number(process.env.HOSTEL_API_PORT ?? 3001);
 
-export const SESSION_COOKIE = 'hg_session';
-
-export const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
-
 export const MAX_ATTACHMENT_BYTES = 2 * 1024 * 1024;
 
 export const ALLOWED_ATTACHMENT_TYPES = new Set([
@@ -25,3 +21,30 @@ export const ALLOWED_ATTACHMENT_TYPES = new Set([
 	'image/gif',
 	'image/webp'
 ]);
+
+// --- JWT & Auth Config ---
+
+export const JWT_SECRET = process.env.JWT_SECRET ?? 'fallback_secret_for_dev_must_be_32_chars_long!';
+export const ACCESS_TOKEN_COOKIE_NAME = 'hg_access_token';
+export const REFRESH_TOKEN_COOKIE_NAME = 'hg_refresh_token';
+
+// --- Redis Config ---
+export const REDIS_URL = process.env.REDIS_URL ?? 'redis://127.0.0.1:6379';
+
+// --- Database Seeding Config ---
+export const SEED_STUDENT_PASSWORD = process.env.SEED_STUDENT_PASSWORD ?? 'SecureStudentPass123!';
+export const SEED_WARDEN_PASSWORD = process.env.SEED_WARDEN_PASSWORD ?? 'SecureWardenPass123!';
+
+
+const IS_DEV = process.env.NODE_ENV !== 'production';
+
+export function getCookieSettings(maxAge: number) {
+	return {
+		httpOnly: true,
+		secure: !IS_DEV, // Secure only in production (HTTPS)
+		sameSite: 'Lax' as const, // Lax is usually better for local dev than Strict, depending on setup
+		path: '/',
+		maxAge
+	};
+}
+

@@ -20,6 +20,13 @@ export function createApp(options: CreateAppOptions) {
     app.use('*', async (c, next) => {
         c.set('db', options.db);
         c.set('uploadsDir', options.uploadsDir);
+        
+        // Secure HTTP Headers including Content-Security-Policy
+        c.header('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none'; sandbox;");
+        c.header('X-Content-Type-Options', 'nosniff');
+        c.header('X-Frame-Options', 'DENY');
+        c.header('Referrer-Policy', 'no-referrer');
+        
         await next();
     });
 
@@ -49,7 +56,6 @@ export function createApp(options: CreateAppOptions) {
 
     app.notFound((c) => c.json({ error: 'Not found.', code: 'not_found' }, 404));
 
-    app.get('/api/health', (c) => c.json({ ok: true }));
     app.route('/api', authRoutes);
     app.route('/api/grievances', grievanceRoutes);
     app.route('/api/attachments', attachmentRoutes);

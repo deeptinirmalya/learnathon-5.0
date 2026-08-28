@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import type { AppEnv } from '../env.ts';
-import { requireUser } from '../auth/session.ts';
+import { requireJwtAuth } from '../auth/jwt.ts';
 import {
 	assembleGrievance,
 	findUserById,
@@ -11,6 +11,7 @@ import {
 	nextCommentId,
 	nextGrievanceId,
 	requireGrievance,
+	assertCanViewGrievance,
 	touchGrievance
 } from '../db/queries.ts';
 import type { CommentRow, AttachmentRow, GrievanceStatusDb } from '../types/index.ts';
@@ -23,6 +24,7 @@ import {
 	originalBasename,
 	writeStoredFile
 } from '../storage/attachments.ts';
+import { rateLimiter } from '../http/rate_limit.ts';
 import {
 	validateCommentBody,
 	validateDescription,
@@ -44,9 +46,9 @@ export const grievanceRoutes = new Hono<AppEnv>();
 
 // ─── GET /grievances ──────────────────────────────────────────────────────────
 
-grievanceRoutes.get('/', (c) => {
+grievanceRoutes.get('/', async (c) => {
 	const db = c.get('db');
-	const user = requireUser(c, db);
+	const user = await requireJwtAuth(c, db);
 	const rows =
 		user.role === 'warden' ? listAllGrievanceRows(db) : listGrievanceRowsForStudent(db, user.id);
 	return c.json({
@@ -56,10 +58,10 @@ grievanceRoutes.get('/', (c) => {
 
 // ─── POST /grievances ─────────────────────────────────────────────────────────
 
-grievanceRoutes.post('/', async (c) => {
+grievanceRoutes.post('/', rateLimiter({ maxTokens: 10, refillRate: 0.5, mode: 'both' }), async (c) => {
 	const db = c.get('db');
 	const uploadsDir = c.get('uploadsDir');
-	const user = requireUser(c, db);
+	const user = await requireJwtAuth(c, db);
 	if (user.role !== 'student') {
 		throw new HttpError(403, 'unauthorized', 'Only students can file grievances.');
 	}
@@ -128,11 +130,13 @@ grievanceRoutes.post('/', async (c) => {
 
 // ─── GET /grievances/:id/comments ────────────────────────────────────────────
 
-grievanceRoutes.get('/:id/comments', (c) => {
+grievanceRoutes.get('/:id/comments', async (c) => {
 	const db = c.get('db');
-	requireUser(c, db);
+	await requireJwtAuth(c, db);
 	const grievanceId = validateGrievanceId(c.req.param('id'));
 	const row = requireGrievance(db, grievanceId);
+	// Check authorization
+	assertCanViewGrievance(user as any, row);
 	const comments = listCommentRows(db, row.id).map((comment) => {
 		const authorRow = findUserById(db, comment.author_id);
 		if (!authorRow) {
@@ -145,11 +149,13 @@ grievanceRoutes.get('/:id/comments', (c) => {
 
 // ─── POST /grievances/:id/comments ───────────────────────────────────────────
 
-grievanceRoutes.post('/:id/comments', async (c) => {
+grievanceRoutes.post('/:id/comments', rateLimiter({ maxTokens: 10, refillRate: 0.5, mode: 'both' }), async (c) => {
 	const db = c.get('db');
-	const user = requireUser(c, db);
+	const user = await requireJwtAuth(c, db);
 	const grievanceId = validateGrievanceId(c.req.param('id'));
 	const row = requireGrievance(db, grievanceId);
+	// Check authorization
+	assertCanViewGrievance(user as any, row);
 
 	let body: unknown;
 	try {
@@ -180,11 +186,13 @@ grievanceRoutes.post('/:id/comments', async (c) => {
 
 // ─── POST /grievances/:id/attachments ────────────────────────────────────────
 
-grievanceRoutes.post('/:id/attachments', async (c) => {
+grievanceRoutes.post('/:id/attachments', rateLimiter({ maxTokens: 10, refillRate: 0.5, mode: 'both' }), async (c) => {
 	const db = c.get('db');
-	const user = requireUser(c, db);
+	const user = await requireJwtAuth(c, db);
 	const grievanceId = validateGrievanceId(c.req.param('id'));
 	const row = requireGrievance(db, grievanceId);
+	// Check authorization
+	assertCanViewGrievance(user as any, row);
 	if (user.role !== 'student' || row.student_id !== user.id) {
 		throw new HttpError(403, 'unauthorized', 'Only the student owner can add attachments.');
 	}
@@ -220,21 +228,25 @@ grievanceRoutes.post('/:id/attachments', async (c) => {
 
 // ─── GET /grievances/:id ─────────────────────────────────────────────────────
 
-grievanceRoutes.get('/:id', (c) => {
+grievanceRoutes.get('/:id', async (c) => {
 	const db = c.get('db');
-	requireUser(c, db);
+	const user = await requireJwtAuth(c, db);
 	const grievanceId = validateGrievanceId(c.req.param('id'));
 	const row = requireGrievance(db, grievanceId);
+	// Check authorization
+	assertCanViewGrievance(user as any, row);
 	return c.json({ data: assembleGrievance(db, row) });
 });
 
 // ─── PATCH /grievances/:id ───────────────────────────────────────────────────
 
-grievanceRoutes.patch('/:id', async (c) => {
+grievanceRoutes.patch('/:id', rateLimiter({ maxTokens: 10, refillRate: 0.5, mode: 'both' }), async (c) => {
 	const db = c.get('db');
-	const user = requireUser(c, db);
+	const user = await requireJwtAuth(c, db);
 	const grievanceId = validateGrievanceId(c.req.param('id'));
 	const row = requireGrievance(db, grievanceId);
+	// Check authorization
+	assertCanViewGrievance(user as any, row);
 
 	let body: unknown;
 	try {

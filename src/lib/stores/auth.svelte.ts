@@ -10,6 +10,32 @@ import type { User } from '$lib/types';
 // during the very first load without an async race.
 let current = $state<User | null>(authService.restore());
 
+// Background verification: verify the cached session against the server
+if (typeof window !== 'undefined' && current) {
+	fetch('/api/me')
+		.then((res) => {
+			if (!res.ok) {
+				current = null;
+				localStorage.removeItem('hg.session.user');
+				if (window.location.pathname !== '/login') {
+					window.location.href = '/login';
+				}
+				return;
+			}
+			return res.json();
+		})
+		.then((data) => {
+			if (data && data.user) {
+				// Server-side user details (including role) overrides localStorage cache
+				current = data.user as User;
+				localStorage.setItem('hg.session.user', JSON.stringify(data.user));
+			}
+		})
+		.catch(() => {
+			// Fail-safe: if network is down we can temporarily keep using local session
+		});
+}
+
 export function getSession(): User | null {
 	return current;
 }

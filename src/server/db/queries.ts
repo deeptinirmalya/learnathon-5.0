@@ -9,6 +9,7 @@ import type {
 	UserRow
 } from '../types/index.ts';
 import { toPublicAttachment, toPublicComment, toPublicGrievance, toPublicUser } from './map.ts';
+import { randomUUID } from 'node:crypto';
 
 export function findUserByEmail(db: Database, email: string): UserRow | undefined {
 	return db.prepare('SELECT * FROM users WHERE email = ?').get(email) as UserRow | undefined;
@@ -95,7 +96,10 @@ export function assertCanViewGrievance(user: SessionUser, row: GrievanceRow): vo
 	}
 }
 
+import { randomBytes } from 'node:crypto';
+
 function nextPrefixedId(db: Database, table: 'grievances' | 'comments' | 'attachments', prefix: string): string {
+	// Fallback/unused but kept for compatibility
 	const rows = db.prepare(`SELECT id FROM ${table}`).all() as { id: string }[];
 	let max = 0;
 	for (const row of rows) {
@@ -107,33 +111,73 @@ function nextPrefixedId(db: Database, table: 'grievances' | 'comments' | 'attach
 }
 
 export function nextGrievanceId(db: Database): string {
-	return nextPrefixedId(db, 'grievances', 'GRV-');
+	// GRV- followed by a random 8-digit number to satisfy /^GRV-\d{4,}$/
+	// We check for uniqueness to prevent collisions
+	while (true) {
+		const randomNum = Math.floor(10000000 + Math.random() * 90000000);
+		const id = `GRV-${randomNum}`;
+		const exists = db.prepare('SELECT 1 FROM grievances WHERE id = ?').get(id);
+		if (!exists) return id;
+	}
 }
 
 export function nextCommentId(db: Database): string {
-	const rows = db.prepare('SELECT id FROM comments').all() as { id: string }[];
-	let max = 0;
-	for (const row of rows) {
-		const match = /^cmt-(\d+)$/.exec(row.id);
-		if (!match) continue;
-		const n = Number.parseInt(match[1], 10);
-		if (n > max) max = n;
+	while (true) {
+		const suffix = randomBytes(8).toString('hex');
+		const id = `cmt-${suffix}`;
+		const exists = db.prepare('SELECT 1 FROM comments WHERE id = ?').get(id);
+		if (!exists) return id;
 	}
-	return `cmt-${max + 1}`;
 }
 
 export function nextAttachmentId(db: Database): string {
-	const rows = db.prepare('SELECT id FROM attachments').all() as { id: string }[];
-	let max = 0;
-	for (const row of rows) {
-		const match = /^att-(\d+)$/.exec(row.id);
-		if (!match) continue;
-		const n = Number.parseInt(match[1], 10);
-		if (n > max) max = n;
+	while (true) {
+		const suffix = randomBytes(8).toString('hex');
+		const id = `att-${suffix}`;
+		const exists = db.prepare('SELECT 1 FROM attachments WHERE id = ?').get(id);
+		if (!exists) return id;
 	}
-	return `att-${max + 1}`;
 }
 
 export function touchGrievance(db: Database, id: string, updatedAt: string): void {
 	db.prepare('UPDATE grievances SET updated_at = ? WHERE id = ?').run(updatedAt, id);
+}
+
+// --- JWT Auth DB Helpers ---
+
+export function isTokenBlacklisted(db: Database, jti: string): boolean {
+	const row = db.prepare('SELECT jti FROM token_blacklist WHERE jti = ? AND expires_at > ?').get(jti, new Date().toISOString());
+	return !!row;
+}
+
+export function blacklistToken(db: Database, jti: string, expiresAt: string): void {
+	db.prepare('INSERT OR IGNORE INTO token_blacklist (jti, expires_at) VALUES (?, ?)').run(jti, expiresAt);
+}
+
+export function logLoginHistory(db: Database, userId: string, ip: string, userAgent: string, country: string, riskScore: number): void {
+	db.prepare(
+		'INSERT INTO login_history (id, user_id, ip_address, user_agent, country, risk_score, login_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+	).run(randomUUID(), userId, ip, userAgent, country, riskScore, new Date().toISOString());
+}
+
+export function saveRefreshToken(db: Database, userId: string, tokenHash: string, expiresAt: string, ip: string, userAgent: string): void {
+	db.prepare(
+		'INSERT INTO refresh_tokens (id, user_id, token_hash, expires_at, ip_address, user_agent) VALUES (?, ?, ?, ?, ?, ?)'
+	).run(randomUUID(), userId, tokenHash, expiresAt, ip, userAgent);
+}
+
+export function getRefreshTokensForUser(db: Database, userId: string): any[] {
+	return db.prepare('SELECT * FROM refresh_tokens WHERE user_id = ? AND revoked = 0').all(userId);
+}
+
+export function revokeRefreshToken(db: Database, id: string): void {
+	db.prepare('UPDATE refresh_tokens SET revoked = 1 WHERE id = ?').run(id);
+}
+
+export function revokeAllRefreshTokensForUser(db: Database, userId: string): void {
+	db.prepare('UPDATE refresh_tokens SET revoked = 1 WHERE user_id = ?').run(userId);
+}
+
+export function incrementUserTokenVersion(db: Database, userId: string): void {
+	db.prepare('UPDATE users SET token_version = token_version + 1 WHERE id = ?').run(userId);
 }

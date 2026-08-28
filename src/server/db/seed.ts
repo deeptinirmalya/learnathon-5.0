@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import type { Database } from 'better-sqlite3';
 import { hashPassword } from '../auth/passwords.ts';
 import { ensureUploadsDir, newStoredName } from '../storage/attachments.ts';
+import { SEED_STUDENT_PASSWORD, SEED_WARDEN_PASSWORD } from '../config.ts';
 
 /** 1×1 PNG */
 const PNG = Buffer.from(
@@ -18,12 +19,12 @@ const JPEG = Buffer.from(
 
 export function seedDatabase(db: Database, uploadsDir: string): void {
 	ensureUploadsDir(uploadsDir);
-	const studentHash = hashPassword('student123');
-	const wardenHash = hashPassword('warden123');
+	const studentHash = hashPassword(SEED_STUDENT_PASSWORD);
+	const wardenHash = hashPassword(SEED_WARDEN_PASSWORD);
 
 	const insertUser = db.prepare(
-		`INSERT INTO users (id, name, email, password_hash, role, room, created_at)
-     VALUES (@id, @name, @email, @password_hash, @role, @room, @created_at)`
+		`INSERT INTO users (id, name, email, password_hash, role, room, token_version, created_at)
+     VALUES (@id, @name, @email, @password_hash, @role, @room, 1, @created_at)`
 	);
 
 	const users = [

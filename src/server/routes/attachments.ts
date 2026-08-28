@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import type { AppEnv } from '../env.ts';
-import { requireUser } from '../auth/session.ts';
+import { requireJwtAuth } from '../auth/jwt.ts';
 import { findAttachmentRow, requireGrievance } from '../db/queries.ts';
 import { readStoredFile } from '../storage/attachments.ts';
 import { HttpError } from '../http/errors.ts';
@@ -8,9 +8,9 @@ import { validateResourceId } from '../validation/validate.ts';
 
 export const attachmentRoutes = new Hono<AppEnv>();
 
-attachmentRoutes.get('/:id', (c) => {
+attachmentRoutes.get('/:id', async (c) => {
 	const db = c.get('db');
-	requireUser(c, db);
+	await requireJwtAuth(c, db);
 	const attachmentId = validateResourceId(c.req.param('id'));
 	const row = findAttachmentRow(db, attachmentId);
 	if (!row) {

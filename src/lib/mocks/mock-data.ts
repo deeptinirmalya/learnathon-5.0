@@ -47,8 +47,8 @@ export const MOCK_USERS: Record<string, User> = {
 
 /** Development-only mock credentials (documented, not real security credentials). */
 export const MOCK_CREDENTIALS = [
-	{ email: 'student@example.test', password: 'student123', userId: 'stu-1' },
-	{ email: 'warden@example.test', password: 'warden123', userId: 'war-1' }
+	{ email: 'student@example.test', password: 'SecureStudentPass123!', userId: 'stu-1' },
+	{ email: 'warden@example.test', password: 'SecureWardenPass123!', userId: 'war-1' }
 ] as const;
 
 export const MOCK_ATTACHMENTS: Record<string, Attachment> = {
