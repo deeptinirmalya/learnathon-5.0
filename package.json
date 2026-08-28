@@ -31,6 +31,7 @@
 		"clsx": "^2.1.1",
 		"concurrently": "^10.0.5",
 		"mode-watcher": "^1.1.0",
+		"prisma": "^6.19.3",
 		"svelte": "^5.56.1",
 		"svelte-check": "^4.6.0",
 		"svelte-sonner": "^1.2.1",
@@ -47,6 +48,7 @@
 		"@hono/node-server": "^2.1.1",
 		"better-sqlite3": "^13.0.3",
 		"cloudinary": "^2.11.0",
+		"@prisma/client": "^6.19.3",
 		"hono": "^4.13.5",
 		"ioredis": "^5.4.2"
 	}

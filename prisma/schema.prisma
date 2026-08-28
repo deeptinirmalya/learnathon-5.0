@@ -1,0 +1,108 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String          @id
+  name           String
+  email          String          @unique
+  passwordHash   String          @map("password_hash")
+  role           String
+  room           String?
+  tokenVersion   Int             @default(1) @map("token_version")
+  createdAt      String          @map("created_at")
+  refreshTokens  RefreshToken[]
+  loginHistories LoginHistory[]
+  grievances     Grievance[]
+  comments       Comment[]
+
+  @@map("users")
+}
+
+model TokenBlacklist {
+  jti       String @id
+  expiresAt String @map("expires_at")
+
+  @@map("token_blacklist")
+}
+
+model RefreshToken {
+  id        String  @id
+  userId    String  @map("user_id")
+  tokenHash String  @map("token_hash")
+  expiresAt String  @map("expires_at")
+  ipAddress String? @map("ip_address")
+  userAgent String? @map("user_agent")
+  revoked   Int     @default(0)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], name: "idx_refresh_tokens_user")
+  @@map("refresh_tokens")
+}
+
+model LoginHistory {
+  id        String  @id
+  userId    String  @map("user_id")
+  ipAddress String? @map("ip_address")
+  userAgent String? @map("user_agent")
+  country   String?
+  riskScore Int?    @default(0) @map("risk_score")
+  loginAt   String  @map("login_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], name: "idx_login_history_user")
+  @@map("login_history")
+}
+
+model Grievance {
+  id          String @id
+  studentId   String @map("student_id")
+  title       String
+  category    String
+  description String
+  status      String
+  createdAt   String @map("created_at")
+  updatedAt   String @map("updated_at")
+
+  student     User         @relation(fields: [studentId], references: [id])
+  comments    Comment[]
+  attachments Attachment[]
+
+  @@index([studentId], name: "idx_grievances_student")
+  @@map("grievances")
+}
+
+model Comment {
+  id          String @id
+  grievanceId String @map("grievance_id")
+  authorId    String @map("author_id")
+  body        String
+  createdAt   String @map("created_at")
+
+  grievance Grievance @relation(fields: [grievanceId], references: [id], onDelete: Cascade)
+  author    User      @relation(fields: [authorId], references: [id])
+
+  @@index([grievanceId], name: "idx_comments_grievance")
+  @@map("comments")
+}
+
+model Attachment {
+  id               String @id
+  grievanceId      String @map("grievance_id")
+  originalFilename String @map("original_filename")
+  url              String
+  mimeType         String @map("mime_type")
+  createdAt        String @map("created_at")
+
+  grievance Grievance @relation(fields: [grievanceId], references: [id], onDelete: Cascade)
+
+  @@index([grievanceId], name: "idx_attachments_grievance")
+  @@map("attachments")
+}

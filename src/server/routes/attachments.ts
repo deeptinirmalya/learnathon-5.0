@@ -12,12 +12,12 @@ attachmentRoutes.get('/:id', async (c) => {
 	const db = c.get('db');
 	const user = await requireJwtAuth(c, db);
 	const attachmentId = validateResourceId(c.req.param('id'));
-	const row = findAttachmentRow(db, attachmentId);
+	const row = await findAttachmentRow(db, attachmentId);
 	if (!row) {
 		throw new HttpError(404, 'not_found', 'Attachment was not found.');
 	}
 	
-	const grievance = requireGrievance(db, row.grievance_id);
+	const grievance = await requireGrievance(db, row.grievanceId);
 	assertCanViewGrievance(user as any, grievance);
 	
 	return c.redirect(row.url);

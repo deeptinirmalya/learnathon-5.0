@@ -1,7 +1,7 @@
 import { sign, verify } from 'hono/jwt';
 import { getCookie } from 'hono/cookie';
 import type { Context } from 'hono';
-import type { Database } from 'better-sqlite3';
+import type { PrismaClient } from '@prisma/client';
 import { randomUUID, createHash } from 'node:crypto';
 import { JWT_SECRET, ACCESS_TOKEN_COOKIE_NAME } from '../config.ts';
 import { HttpError } from '../http/errors.ts';
@@ -66,7 +66,7 @@ export async function createRefreshToken(userId: string) {
 	return await sign(payload, JWT_SECRET, 'HS256');
 }
 
-export async function requireJwtAuth(c: Context, db: Database) {
+export async function requireJwtAuth(c: Context, db: PrismaClient) {
 	let token = '';
 	const authHeader = c.req.header('Authorization');
 	
@@ -109,13 +109,13 @@ export async function requireJwtAuth(c: Context, db: Database) {
 	}
 	
 	// 2. Check Blacklist
-	if (isTokenBlacklisted(db, payload.jti)) {
+	if (await isTokenBlacklisted(db, payload.jti)) {
 		throw new HttpError(401, 'unauthenticated', 'Token has been revoked/logged out');
 	}
 	
 	// 3. Check Global Revocation (Token Version)
-	const user = findUserById(db, payload.user_id);
-	if (!user || user.token_version !== payload.version) {
+	const user = await findUserById(db, payload.user_id);
+	if (!user || user.tokenVersion !== payload.version) {
 		throw new HttpError(401, 'unauthenticated', 'Session revoked from all devices');
 	}
 	
@@ -126,8 +126,8 @@ export async function requireJwtAuth(c: Context, db: Database) {
 		email: user.email,
 		role: user.role,
 		room: user.room,
-		created_at: user.created_at,
-		token_version: user.token_version,
+		created_at: user.createdAt,
+		token_version: user.tokenVersion,
 		jti: payload.jti,
 		exp: payload.exp
 	};

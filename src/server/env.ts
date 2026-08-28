@@ -1,8 +1,8 @@
-import type { Database } from 'better-sqlite3';
+import type { PrismaClient } from '@prisma/client';
 
 export type AppEnv = {
 	Variables: {
-		db: Database;
+		db: PrismaClient;
 		uploadsDir: string;
 		user?: {
 			id: string;

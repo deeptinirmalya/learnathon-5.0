@@ -1,3 +1,5 @@
+import type { User, Grievance, Comment, Attachment } from '@prisma/client';
+
 export type Role = 'student' | 'warden';
 
 export type GrievanceStatusDb = 'open' | 'in_progress' | 'resolved';
@@ -52,44 +54,10 @@ export interface PublicGrievance {
 	comments: PublicComment[];
 }
 
-export interface UserRow {
-	id: string;
-	name: string;
-	email: string;
-	password_hash: string;
-	role: Role;
-	room: string | null;
-	token_version: number;
-	created_at: string;
-}
-
-export interface GrievanceRow {
-	id: string;
-	student_id: string;
-	title: string;
-	category: string;
-	description: string;
-	status: GrievanceStatusDb;
-	created_at: string;
-	updated_at: string;
-}
-
-export interface CommentRow {
-	id: string;
-	grievance_id: string;
-	author_id: string;
-	body: string;
-	created_at: string;
-}
-
-export interface AttachmentRow {
-	id: string;
-	grievance_id: string;
-	original_filename: string;
-	url: string;
-	mime_type: string;
-	created_at: string;
-}
+export type UserRow = User;
+export type GrievanceRow = Grievance;
+export type CommentRow = Comment;
+export type AttachmentRow = Attachment;
 
 export interface SessionUser {
 	id: string;
@@ -97,7 +65,7 @@ export interface SessionUser {
 	email: string;
 	role: Role;
 	room: string | null;
-	created_at: string;
+	created_at: string; // Session might still use snake_case if we don't change auth jwt payload
 }
 
 export type ErrorCode =

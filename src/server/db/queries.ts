@@ -1,96 +1,105 @@
-import type { Database } from 'better-sqlite3';
+import type { PrismaClient, User, Grievance, Comment, Attachment } from '@prisma/client';
 import { HttpError } from '../http/errors.ts';
-import type {
-	AttachmentRow,
-	CommentRow,
-	GrievanceRow,
-	PublicGrievance,
-	SessionUser,
-	UserRow
-} from '../types/index.ts';
+import type { PublicGrievance, SessionUser } from '../types/index.ts';
 import { toPublicAttachment, toPublicComment, toPublicGrievance, toPublicUser } from './map.ts';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, randomBytes } from 'node:crypto';
 
-export function findUserByEmail(db: Database, email: string): UserRow | undefined {
-	return db.prepare('SELECT * FROM users WHERE email = ?').get(email) as UserRow | undefined;
+export type UserRow = User;
+export type GrievanceRow = Grievance;
+export type CommentRow = Comment;
+export type AttachmentRow = Attachment;
+
+export async function findUserByEmail(db: PrismaClient, email: string): Promise<UserRow | null> {
+	return db.user.findUnique({ where: { email } });
 }
 
-export function findUserById(db: Database, id: string): UserRow | undefined {
-	return db.prepare('SELECT * FROM users WHERE id = ?').get(id) as UserRow | undefined;
+export async function findUserById(db: PrismaClient, id: string): Promise<UserRow | null> {
+	return db.user.findUnique({ where: { id } });
 }
 
-export function createUser(
-	db: Database,
+export async function createUser(
+	db: PrismaClient,
 	id: string,
 	name: string,
 	email: string,
 	passwordHash: string,
 	role: 'student' | 'warden',
 	room: string | null
-): void {
-	db.prepare(
-		`INSERT INTO users (id, name, email, password_hash, role, room, token_version, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, 1, datetime('now'))`
-	).run(id, name, email, passwordHash, role, room);
-}
-
-export function userCount(db: Database): number {
-	const row = db.prepare('SELECT COUNT(*) AS n FROM users').get() as { n: number };
-	return row.n;
-}
-
-export function findGrievanceRow(db: Database, id: string): GrievanceRow | undefined {
-	return db.prepare('SELECT * FROM grievances WHERE id = ?').get(id) as GrievanceRow | undefined;
-}
-
-export function listGrievanceRowsForStudent(db: Database, studentId: string): GrievanceRow[] {
-	return db
-		.prepare('SELECT * FROM grievances WHERE student_id = ? ORDER BY created_at DESC')
-		.all(studentId) as GrievanceRow[];
-}
-
-export function listAllGrievanceRows(db: Database): GrievanceRow[] {
-	return db.prepare('SELECT * FROM grievances ORDER BY created_at DESC').all() as GrievanceRow[];
-}
-
-export function listCommentRows(db: Database, grievanceId: string): CommentRow[] {
-	return db
-		.prepare('SELECT * FROM comments WHERE grievance_id = ? ORDER BY created_at ASC')
-		.all(grievanceId) as CommentRow[];
-}
-
-export function listAttachmentRows(db: Database, grievanceId: string): AttachmentRow[] {
-	return db
-		.prepare('SELECT * FROM attachments WHERE grievance_id = ? ORDER BY created_at ASC')
-		.all(grievanceId) as AttachmentRow[];
-}
-
-export function findAttachmentRow(db: Database, id: string): AttachmentRow | undefined {
-	return db.prepare('SELECT * FROM attachments WHERE id = ?').get(id) as AttachmentRow | undefined;
-}
-
-export function assembleGrievance(db: Database, row: GrievanceRow): PublicGrievance {
-	const studentRow = findUserById(db, row.student_id);
-	if (!studentRow) {
-		throw new HttpError(500, 'internal', 'Internal server error.');
-	}
-	const student = toPublicUser(studentRow);
-	const attachments = listAttachmentRows(db, row.id).map(toPublicAttachment);
-	const comments = listCommentRows(db, row.id).map((comment) => {
-		const authorRow = findUserById(db, comment.author_id);
-		if (!authorRow) {
-			throw new HttpError(500, 'internal', 'Internal server error.');
+): Promise<void> {
+	await db.user.create({
+		data: {
+			id,
+			name,
+			email,
+			passwordHash,
+			role,
+			room,
+			tokenVersion: 1,
+			createdAt: new Date().toISOString()
 		}
-		return toPublicComment(comment, toPublicUser(authorRow));
 	});
+}
+
+export async function userCount(db: PrismaClient): Promise<number> {
+	return db.user.count();
+}
+
+export async function findGrievanceRow(db: PrismaClient, id: string): Promise<GrievanceRow | null> {
+	return db.grievance.findUnique({ where: { id } });
+}
+
+export async function listGrievanceRowsForStudent(db: PrismaClient, studentId: string): Promise<GrievanceRow[]> {
+	return db.grievance.findMany({
+		where: { studentId },
+		orderBy: { createdAt: 'desc' }
+	});
+}
+
+export async function listAllGrievanceRows(db: PrismaClient): Promise<GrievanceRow[]> {
+	return db.grievance.findMany({
+		orderBy: { createdAt: 'desc' }
+	});
+}
+
+export async function listCommentRows(db: PrismaClient, grievanceId: string): Promise<CommentRow[]> {
+	return db.comment.findMany({
+		where: { grievanceId },
+		orderBy: { createdAt: 'asc' }
+	});
+}
+
+export async function listAttachmentRows(db: PrismaClient, grievanceId: string): Promise<AttachmentRow[]> {
+	return db.attachment.findMany({
+		where: { grievanceId },
+		orderBy: { createdAt: 'asc' }
+	});
+}
+
+export async function findAttachmentRow(db: PrismaClient, id: string): Promise<AttachmentRow | null> {
+	return db.attachment.findUnique({ where: { id } });
+}
+
+export async function assembleGrievance(db: PrismaClient, row: GrievanceRow): Promise<PublicGrievance> {
+	const studentRow = await findUserById(db, row.studentId);
+	if (!studentRow) throw new HttpError(500, 'internal', 'Internal server error.');
+	const student = toPublicUser(studentRow);
+	
+	const attachmentRows = await listAttachmentRows(db, row.id);
+	const attachments = attachmentRows.map(toPublicAttachment);
+	
+	const commentRows = await listCommentRows(db, row.id);
+	const comments = await Promise.all(commentRows.map(async (comment) => {
+		const authorRow = await findUserById(db, comment.authorId);
+		if (!authorRow) throw new HttpError(500, 'internal', 'Internal server error.');
+		return toPublicComment(comment, toPublicUser(authorRow));
+	}));
+	
 	return toPublicGrievance(row, student, attachments, comments);
 }
 
-export function requireGrievance(db: Database, id: string): GrievanceRow {
-	const row = findGrievanceRow(db, id);
-	if (!row) {
-		throw new HttpError(404, 'not_found', 'Grievance was not found.');
-	}
+export async function requireGrievance(db: PrismaClient, id: string): Promise<GrievanceRow> {
+	const row = await findGrievanceRow(db, id);
+	if (!row) throw new HttpError(404, 'not_found', 'Grievance was not found.');
 	return row;
 }
 
@@ -99,100 +108,121 @@ export function assertCanViewGrievance(user: SessionUser, row: GrievanceRow): vo
 		case 'warden':
 			return;
 		case 'student':
-			if (row.student_id !== user.id) {
+			if (row.studentId !== user.id) {
 				throw new HttpError(403, 'unauthorized', 'You cannot access this grievance.');
 			}
 			return;
 		default: {
 			const _exhaustive: never = user.role;
 			throw new HttpError(500, 'internal', 'Internal server error.');
-			void _exhaustive;
 		}
 	}
 }
 
-import { randomBytes } from 'node:crypto';
-
-function nextPrefixedId(db: Database, table: 'grievances' | 'comments' | 'attachments', prefix: string): string {
-	// Fallback/unused but kept for compatibility
-	const rows = db.prepare(`SELECT id FROM ${table}`).all() as { id: string }[];
-	let max = 0;
-	for (const row of rows) {
-		if (!row.id.startsWith(prefix)) continue;
-		const n = Number.parseInt(row.id.slice(prefix.length), 10);
-		if (!Number.isNaN(n) && n > max) max = n;
-	}
-	return `${prefix}${String(max + 1).padStart(prefix === 'GRV-' ? 4 : 0, '0')}`;
-}
-
-export function nextGrievanceId(db: Database): string {
-	// GRV- followed by a random 8-digit number to satisfy /^GRV-\d{4,}$/
-	// We check for uniqueness to prevent collisions
+export async function nextGrievanceId(db: PrismaClient): Promise<string> {
 	while (true) {
 		const randomNum = Math.floor(10000000 + Math.random() * 90000000);
 		const id = `GRV-${randomNum}`;
-		const exists = db.prepare('SELECT 1 FROM grievances WHERE id = ?').get(id);
+		const exists = await db.grievance.findUnique({ where: { id } });
 		if (!exists) return id;
 	}
 }
 
-export function nextCommentId(db: Database): string {
+export async function nextCommentId(db: PrismaClient): Promise<string> {
 	while (true) {
 		const suffix = randomBytes(8).toString('hex');
 		const id = `cmt-${suffix}`;
-		const exists = db.prepare('SELECT 1 FROM comments WHERE id = ?').get(id);
+		const exists = await db.comment.findUnique({ where: { id } });
 		if (!exists) return id;
 	}
 }
 
-export function nextAttachmentId(db: Database): string {
+export async function nextAttachmentId(db: PrismaClient): Promise<string> {
 	while (true) {
 		const suffix = randomBytes(8).toString('hex');
 		const id = `att-${suffix}`;
-		const exists = db.prepare('SELECT 1 FROM attachments WHERE id = ?').get(id);
+		const exists = await db.attachment.findUnique({ where: { id } });
 		if (!exists) return id;
 	}
 }
 
-export function touchGrievance(db: Database, id: string, updatedAt: string): void {
-	db.prepare('UPDATE grievances SET updated_at = ? WHERE id = ?').run(updatedAt, id);
+export async function touchGrievance(db: PrismaClient, id: string, updatedAt: string): Promise<void> {
+	await db.grievance.update({
+		where: { id },
+		data: { updatedAt }
+	});
 }
 
 // --- JWT Auth DB Helpers ---
 
-export function isTokenBlacklisted(db: Database, jti: string): boolean {
-	const row = db.prepare('SELECT jti FROM token_blacklist WHERE jti = ? AND expires_at > ?').get(jti, new Date().toISOString());
+export async function isTokenBlacklisted(db: PrismaClient, jti: string): Promise<boolean> {
+	const row = await db.tokenBlacklist.findFirst({
+		where: {
+			jti,
+			expiresAt: { gt: new Date().toISOString() }
+		}
+	});
 	return !!row;
 }
 
-export function blacklistToken(db: Database, jti: string, expiresAt: string): void {
-	db.prepare('INSERT OR IGNORE INTO token_blacklist (jti, expires_at) VALUES (?, ?)').run(jti, expiresAt);
+export async function blacklistToken(db: PrismaClient, jti: string, expiresAt: string): Promise<void> {
+	await db.tokenBlacklist.upsert({
+		where: { jti },
+		update: {},
+		create: { jti, expiresAt }
+	});
 }
 
-export function logLoginHistory(db: Database, userId: string, ip: string, userAgent: string, country: string, riskScore: number): void {
-	db.prepare(
-		'INSERT INTO login_history (id, user_id, ip_address, user_agent, country, risk_score, login_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
-	).run(randomUUID(), userId, ip, userAgent, country, riskScore, new Date().toISOString());
+export async function logLoginHistory(db: PrismaClient, userId: string, ip: string, userAgent: string, country: string, riskScore: number): Promise<void> {
+	await db.loginHistory.create({
+		data: {
+			id: randomUUID(),
+			userId,
+			ipAddress: ip,
+			userAgent,
+			country,
+			riskScore,
+			loginAt: new Date().toISOString()
+		}
+	});
 }
 
-export function saveRefreshToken(db: Database, userId: string, tokenHash: string, expiresAt: string, ip: string, userAgent: string): void {
-	db.prepare(
-		'INSERT INTO refresh_tokens (id, user_id, token_hash, expires_at, ip_address, user_agent) VALUES (?, ?, ?, ?, ?, ?)'
-	).run(randomUUID(), userId, tokenHash, expiresAt, ip, userAgent);
+export async function saveRefreshToken(db: PrismaClient, userId: string, tokenHash: string, expiresAt: string, ip: string, userAgent: string): Promise<void> {
+	await db.refreshToken.create({
+		data: {
+			id: randomUUID(),
+			userId,
+			tokenHash,
+			expiresAt,
+			ipAddress: ip,
+			userAgent
+		}
+	});
 }
 
-export function getRefreshTokensForUser(db: Database, userId: string): any[] {
-	return db.prepare('SELECT * FROM refresh_tokens WHERE user_id = ? AND revoked = 0').all(userId);
+export async function getRefreshTokensForUser(db: PrismaClient, userId: string): Promise<any[]> {
+	return db.refreshToken.findMany({
+		where: { userId, revoked: 0 }
+	});
 }
 
-export function revokeRefreshToken(db: Database, id: string): void {
-	db.prepare('UPDATE refresh_tokens SET revoked = 1 WHERE id = ?').run(id);
+export async function revokeRefreshToken(db: PrismaClient, id: string): Promise<void> {
+	await db.refreshToken.update({
+		where: { id },
+		data: { revoked: 1 }
+	});
 }
 
-export function revokeAllRefreshTokensForUser(db: Database, userId: string): void {
-	db.prepare('UPDATE refresh_tokens SET revoked = 1 WHERE user_id = ?').run(userId);
+export async function revokeAllRefreshTokensForUser(db: PrismaClient, userId: string): Promise<void> {
+	await db.refreshToken.updateMany({
+		where: { userId },
+		data: { revoked: 1 }
+	});
 }
 
-export function incrementUserTokenVersion(db: Database, userId: string): void {
-	db.prepare('UPDATE users SET token_version = token_version + 1 WHERE id = ?').run(userId);
+export async function incrementUserTokenVersion(db: PrismaClient, userId: string): Promise<void> {
+	await db.user.update({
+		where: { id: userId },
+		data: { tokenVersion: { increment: 1 } }
+	});
 }

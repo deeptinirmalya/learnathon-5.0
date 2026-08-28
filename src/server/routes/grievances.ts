@@ -29,11 +29,9 @@ import {
 	validateCommentBody,
 	validateDescription,
 	validateGrievanceId,
-	validateResourceId,
 	validateString,
 	validateTitle
 } from '../validation/validate.ts';
-
 
 function nowIso(): string {
 	return new Date().toISOString();
@@ -51,9 +49,9 @@ grievanceRoutes.get('/', async (c) => {
 	const db = c.get('db');
 	const user = await requireJwtAuth(c, db);
 	const rows =
-		user.role === 'warden' ? listAllGrievanceRows(db) : listGrievanceRowsForStudent(db, user.id);
+		user.role === 'warden' ? await listAllGrievanceRows(db) : await listGrievanceRowsForStudent(db, user.id);
 	return c.json({
-		data: rows.map((row) => assembleGrievance(db, row))
+		data: await Promise.all(rows.map(async (row) => await assembleGrievance(db, row)))
 	});
 });
 
@@ -61,7 +59,6 @@ grievanceRoutes.get('/', async (c) => {
 
 grievanceRoutes.post('/', rateLimiter({ maxTokens: 10, refillRate: 0.5, mode: 'both' }), async (c) => {
 	const db = c.get('db');
-	const uploadsDir = c.get('uploadsDir');
 	const user = await requireJwtAuth(c, db);
 	if (user.role !== 'student') {
 		throw new HttpError(403, 'unauthorized', 'Only students can file grievances.');
@@ -108,31 +105,38 @@ grievanceRoutes.post('/', rateLimiter({ maxTokens: 10, refillRate: 0.5, mode: 'b
 		validatedFile = { bytes, mime, url: fileUrl, original: originalBasename(upload.name) };
 	}
 
-	const id = nextGrievanceId(db);
+	const id = await nextGrievanceId(db);
 	const ts = nowIso();
 	
-	db.transaction(() => {
-		db.prepare(
-			`INSERT INTO grievances (id, student_id, title, category, description, status, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, 'open', ?, ?)`
-		).run(id, user.id, title, category, description, ts, ts);
+	await db.$transaction(async (tx: any) => {
+		await tx.grievance.create({
+			data: {
+				id,
+				studentId: user.id,
+				title,
+				category,
+				description,
+				status: 'open',
+				createdAt: ts,
+				updatedAt: ts
+			}
+		});
 
 		if (validatedFile) {
-			db.prepare(
-				`INSERT INTO attachments (id, grievance_id, original_filename, url, mime_type, created_at)
-		   VALUES (?, ?, ?, ?, ?, ?)`
-			).run(
-				nextAttachmentId(db),
-				id,
-				validatedFile.original,
-				validatedFile.url,
-				validatedFile.mime,
-				ts
-			);
+			await tx.attachment.create({
+				data: {
+					id: await nextAttachmentId(tx),
+					grievanceId: id,
+					originalFilename: validatedFile.original,
+					url: validatedFile.url,
+					mimeType: validatedFile.mime,
+					createdAt: ts
+				}
+			});
 		}
-	})();
+	});
 
-	return c.json({ data: assembleGrievance(db, requireGrievance(db, id)) }, 201);
+	return c.json({ data: await assembleGrievance(db, await requireGrievance(db, id)) }, 201);
 });
 
 // ─── GET /grievances/:id/comments ────────────────────────────────────────────
@@ -141,16 +145,17 @@ grievanceRoutes.get('/:id/comments', async (c) => {
 	const db = c.get('db');
 	const user = await requireJwtAuth(c, db);
 	const grievanceId = validateGrievanceId(c.req.param('id'));
-	const row = requireGrievance(db, grievanceId);
+	const row = await requireGrievance(db, grievanceId);
 	// Check authorization
 	assertCanViewGrievance(user as any, row);
-	const comments = listCommentRows(db, row.id).map((comment) => {
-		const authorRow = findUserById(db, comment.author_id);
+	const commentsRaw = await listCommentRows(db, row.id);
+	const comments = await Promise.all(commentsRaw.map(async (comment) => {
+		const authorRow = await findUserById(db, comment.authorId);
 		if (!authorRow) {
 			throw new HttpError(500, 'internal', 'Internal server error.');
 		}
 		return toPublicComment(comment, toPublicUser(authorRow));
-	});
+	}));
 	return c.json({ data: comments });
 });
 
@@ -160,7 +165,7 @@ grievanceRoutes.post('/:id/comments', rateLimiter({ maxTokens: 10, refillRate: 0
 	const db = c.get('db');
 	const user = await requireJwtAuth(c, db);
 	const grievanceId = validateGrievanceId(c.req.param('id'));
-	const row = requireGrievance(db, grievanceId);
+	const row = await requireGrievance(db, grievanceId);
 	// Check authorization
 	assertCanViewGrievance(user as any, row);
 
@@ -176,19 +181,19 @@ grievanceRoutes.post('/:id/comments', rateLimiter({ maxTokens: 10, refillRate: 0
 		body && typeof body === 'object' && 'body' in body ? body.body : undefined
 	);
 
-	const id = nextCommentId(db);
+	const id = await nextCommentId(db);
 	const ts = nowIso();
-	db.prepare(
-		`INSERT INTO comments (id, grievance_id, author_id, body, created_at) VALUES (?, ?, ?, ?, ?)`
-	).run(id, row.id, user.id, text, ts);
-	touchGrievance(db, row.id, ts);
+	await db.comment.create({
+		data: { id, grievanceId: row.id, authorId: user.id, body: text, createdAt: ts }
+	});
+	await touchGrievance(db, row.id, ts);
 
-	const author = findUserById(db, user.id);
+	const author = await findUserById(db, user.id);
 	if (!author) {
 		throw new HttpError(500, 'internal', 'Internal server error.');
 	}
-	const commentRow = db.prepare('SELECT * FROM comments WHERE id = ?').get(id) as CommentRow;
-	return c.json({ data: toPublicComment(commentRow, toPublicUser(author)) }, 201);
+	const commentRow = await db.comment.findUnique({ where: { id } });
+	return c.json({ data: toPublicComment(commentRow!, toPublicUser(author)) }, 201);
 });
 
 // ─── POST /grievances/:id/attachments ────────────────────────────────────────
@@ -197,10 +202,10 @@ grievanceRoutes.post('/:id/attachments', rateLimiter({ maxTokens: 10, refillRate
 	const db = c.get('db');
 	const user = await requireJwtAuth(c, db);
 	const grievanceId = validateGrievanceId(c.req.param('id'));
-	const row = requireGrievance(db, grievanceId);
+	const row = await requireGrievance(db, grievanceId);
 	// Check authorization
 	assertCanViewGrievance(user as any, row);
-	if (user.role !== 'student' || row.student_id !== user.id) {
+	if (user.role !== 'student' || row.studentId !== user.id) {
 		throw new HttpError(403, 'unauthorized', 'Only the student owner can add attachments.');
 	}
 	if (row.status === 'resolved') {
@@ -222,16 +227,17 @@ grievanceRoutes.post('/:id/attachments', rateLimiter({ maxTokens: 10, refillRate
 	const stored = newStoredName(mime);
 	const fileUrl = await uploadToCloudinary(stored, bytes, mime);
 	const ts = nowIso();
-	const id = nextAttachmentId(db);
-	db.transaction(() => {
-		db.prepare(
-			`INSERT INTO attachments (id, grievance_id, original_filename, url, mime_type, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?)`
-		).run(id, row.id, originalBasename(upload.name), fileUrl, mime, ts);
-		touchGrievance(db, row.id, ts);
-	})();
-	const saved = db.prepare('SELECT * FROM attachments WHERE id = ?').get(id) as AttachmentRow;
-	return c.json({ data: toPublicAttachment(saved) }, 201);
+	const id = await nextAttachmentId(db);
+	
+	await db.$transaction(async (tx: any) => {
+		await tx.attachment.create({
+			data: { id, grievanceId: row.id, originalFilename: originalBasename(upload.name), url: fileUrl, mimeType: mime, createdAt: ts }
+		});
+		await touchGrievance(tx, row.id, ts);
+	});
+	
+	const saved = await db.attachment.findUnique({ where: { id } });
+	return c.json({ data: toPublicAttachment(saved!) }, 201);
 });
 
 // ─── GET /grievances/:id ─────────────────────────────────────────────────────
@@ -240,10 +246,10 @@ grievanceRoutes.get('/:id', async (c) => {
 	const db = c.get('db');
 	const user = await requireJwtAuth(c, db);
 	const grievanceId = validateGrievanceId(c.req.param('id'));
-	const row = requireGrievance(db, grievanceId);
+	const row = await requireGrievance(db, grievanceId);
 	// Check authorization
 	assertCanViewGrievance(user as any, row);
-	return c.json({ data: assembleGrievance(db, row) });
+	return c.json({ data: await assembleGrievance(db, row) });
 });
 
 // ─── PATCH /grievances/:id ───────────────────────────────────────────────────
@@ -252,7 +258,7 @@ grievanceRoutes.patch('/:id', rateLimiter({ maxTokens: 10, refillRate: 0.5, mode
 	const db = c.get('db');
 	const user = await requireJwtAuth(c, db);
 	const grievanceId = validateGrievanceId(c.req.param('id'));
-	const row = requireGrievance(db, grievanceId);
+	const row = await requireGrievance(db, grievanceId);
 	// Check authorization
 	assertCanViewGrievance(user as any, row);
 
@@ -285,7 +291,7 @@ grievanceRoutes.patch('/:id', rateLimiter({ maxTokens: 10, refillRate: 0.5, mode
 			let nextTitle = row.title;
 			let nextDescription = row.description;
 			let nextCategory = row.category;
-			let nextStatus: GrievanceStatusDb = row.status;
+			let nextStatus: GrievanceStatusDb = row.status as GrievanceStatusDb;
 
 			// ── Validate each provided field ───────────────────────────────────
 			if (title !== undefined) {
@@ -304,9 +310,10 @@ grievanceRoutes.patch('/:id', rateLimiter({ maxTokens: 10, refillRate: 0.5, mode
 				nextStatus = statusToDb(status);
 			}
 			const ts = nowIso();
-			db.prepare(
-				'UPDATE grievances SET title = ?, description = ?, category = ?, status = ?, updated_at = ? WHERE id = ?'
-			).run(nextTitle, nextDescription, nextCategory, nextStatus, ts, row.id);
+			await db.grievance.update({
+				where: { id: row.id },
+				data: { title: nextTitle, description: nextDescription, category: nextCategory, status: nextStatus, updatedAt: ts }
+			});
 			break;
 		}
 		case 'warden': {
@@ -318,19 +325,17 @@ grievanceRoutes.patch('/:id', rateLimiter({ maxTokens: 10, refillRate: 0.5, mode
 			}
 			const nextStatus = statusToDb(status);
 			const ts = nowIso();
-			db.prepare('UPDATE grievances SET status = ?, updated_at = ? WHERE id = ?').run(
-				nextStatus,
-				ts,
-				row.id
-			);
+			await db.grievance.update({
+				where: { id: row.id },
+				data: { status: nextStatus, updatedAt: ts }
+			});
 			break;
 		}
 		default: {
 			const _exhaustive: never = user.role;
 			throw new HttpError(500, 'internal', 'Internal server error.');
-			void _exhaustive;
 		}
 	}
 
-	return c.json({ data: assembleGrievance(db, requireGrievance(db, row.id)) });
+	return c.json({ data: await assembleGrievance(db, await requireGrievance(db, row.id)) });
 });

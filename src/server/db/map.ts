@@ -27,8 +27,8 @@ export function toPublicUser(row: Pick<UserRow, 'id' | 'name' | 'email' | 'role'
 export function toPublicAttachment(row: AttachmentRow): PublicAttachment {
 	return {
 		id: row.id,
-		filename: row.original_filename,
-		contentType: row.mime_type,
+		filename: row.originalFilename,
+		contentType: row.mimeType,
 		url: row.url
 	};
 }
@@ -36,11 +36,11 @@ export function toPublicAttachment(row: AttachmentRow): PublicAttachment {
 export function toPublicComment(row: CommentRow, author: PublicUser): PublicComment {
 	return {
 		id: row.id,
-		grievanceId: row.grievance_id,
-		authorId: row.author_id,
+		grievanceId: row.grievanceId,
+		authorId: row.authorId,
 		author,
 		body: row.body,
-		createdAt: row.created_at
+		createdAt: row.createdAt
 	};
 }
 
@@ -56,10 +56,10 @@ export function toPublicGrievance(
 		description: row.description,
 		category: row.category as GrievanceCategory,
 		status: statusToUi(row.status),
-		studentId: row.student_id,
+		studentId: row.studentId,
 		student,
-		createdAt: row.created_at,
-		updatedAt: row.updated_at,
+		createdAt: row.createdAt,
+		updatedAt: row.updatedAt,
 		attachments,
 		comments
 	};
