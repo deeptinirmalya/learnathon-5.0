@@ -1,25 +1,31 @@
-import { existsSync, unlinkSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { DEFAULT_DB_PATH, DEFAULT_UPLOADS_DIR } from '../config.ts';
+import { DEFAULT_UPLOADS_DIR } from '../config.ts';
 import { openDatabase } from './connection.ts';
 import { seedDatabase } from './seed.ts';
 import { resetUploadsDir } from '../storage/attachments.ts';
 
-function removeIfExists(path: string): void {
-	if (existsSync(path)) unlinkSync(path);
-}
-
-export function resetDatabase(dbPath = DEFAULT_DB_PATH, uploadsDir = DEFAULT_UPLOADS_DIR): void {
-	removeIfExists(dbPath);
-	removeIfExists(`${dbPath}-wal`);
-	removeIfExists(`${dbPath}-shm`);
+export async function resetDatabase(uploadsDir = DEFAULT_UPLOADS_DIR): Promise<void> {
 	resetUploadsDir(uploadsDir);
-	const db = openDatabase(dbPath);
-	seedDatabase(db, uploadsDir);
-	db.close();
+	const db = openDatabase();
+	
+	// Clear all tables
+	await db.attachment.deleteMany();
+	await db.comment.deleteMany();
+	await db.grievance.deleteMany();
+	await db.loginHistory.deleteMany();
+	await db.refreshToken.deleteMany();
+	await db.tokenBlacklist.deleteMany();
+	await db.user.deleteMany();
+
+	await seedDatabase(db, uploadsDir);
+	await db.$disconnect();
 }
 
 if (fileURLToPath(import.meta.url) === process.argv[1]) {
-	resetDatabase();
-	console.log('Reset complete: data/hostel.db and uploads/ restored to the seeded lab state.');
+	resetDatabase().then(() => {
+		console.log('Reset complete: Neon database and uploads/ restored to the seeded lab state.');
+	}).catch((err) => {
+		console.error('Reset failed:', err);
+		process.exit(1);
+	});
 }

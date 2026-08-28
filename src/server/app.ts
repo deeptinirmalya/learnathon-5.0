@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import type { Database } from 'better-sqlite3';
+import type { PrismaClient } from '@prisma/client';
 import type { AppEnv } from './env.ts';
 import { handleError, HttpError } from './http/errors.ts';
 import { authRoutes } from './routes/auth.ts';
@@ -11,7 +11,7 @@ import { bodyLimit } from 'hono/body-limit';
 import { MAX_ATTACHMENT_BYTES } from './config.ts';
 
 export type CreateAppOptions = {
-    db: Database;
+    db: PrismaClient;
     uploadsDir: string;
     allowedOrigins?: string[];
 };
