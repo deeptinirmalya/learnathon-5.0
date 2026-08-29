@@ -1,0 +1,38 @@
+================================================================================
+TEST EVIDENCE: HG-CSRF-001 — Double-Submit CSRF Protection
+================================================================================
+Endpoints: POST, PUT, PATCH, DELETE mutations using cookie authentication
+
+--- BEFORE REMEDIATION ---
+Attacker sends cross-origin form POST with student session cookie:
+Request:
+POST /api/grievances HTTP/1.1
+Host: localhost:3001
+Cookie: hg_access_token=<STUDENT_COOKIE>
+Content-Type: application/json
+
+{"title":"Fake Grievance","category":"Room","description":"Created via CSRF"}
+
+Response:
+HTTP/1.1 201 Created (Forged request executed)
+
+--- AFTER REMEDIATION ---
+Request without X-CSRF-Token header or invalid token:
+POST /api/grievances HTTP/1.1
+Host: localhost:3001
+Cookie: hg_access_token=<STUDENT_COOKIE>; hg_csrf_token=<CSRF_COOKIE>
+Content-Type: application/json
+
+{"title":"Fake Grievance","category":"Room","description":"Created via CSRF"}
+
+Response:
+HTTP/1.1 403 Forbidden
+Content-Type: application/json
+
+{
+  "error": "CSRF token missing or invalid.",
+  "code": "forbidden"
+}
+
+Verification Result: ✅ Verified Fixed
+Evidence Backing: Automated Test Suite (src/server/app.test.ts: 'rejects state-changing requests without a valid CSRF token')

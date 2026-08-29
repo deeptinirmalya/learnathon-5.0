@@ -1,0 +1,35 @@
+================================================================================
+TEST EVIDENCE: HG-INPUT-002 — Institutional Email Domain Validation
+================================================================================
+Endpoints: POST /api/signup, POST /api/admin/wardens
+Component: src/server/validation/validate.ts -> validateEmail()
+
+--- BEFORE REMEDIATION ---
+Attacker signs up with external or spoofed email addresses:
+Request:
+POST /api/signup HTTP/1.1
+Content-Type: application/json
+
+{"name":"Hacker","email":"hacker@external-mail.com","password":"Password123!","room":"A-101"}
+
+Response:
+HTTP/1.1 201 Created (External account allowed)
+
+--- AFTER REMEDIATION ---
+Request:
+POST /api/signup HTTP/1.1
+Content-Type: application/json
+
+{"name":"Hacker","email":"hacker@external-mail.com","password":"Password123!","room":"A-101"}
+
+Response:
+HTTP/1.1 400 Bad Request
+Content-Type: application/json
+
+{
+  "error": "Only @giet.edu (or @example.test) email addresses are allowed.",
+  "code": "bad_request"
+}
+
+Verification Result: ✅ Verified Fixed
+Evidence Backing: src/server/validation/validate.ts regex enforcement + admin provisioning tests

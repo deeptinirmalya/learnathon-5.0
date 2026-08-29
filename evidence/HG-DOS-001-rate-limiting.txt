@@ -1,0 +1,23 @@
+================================================================================
+TEST EVIDENCE: HG-DOS-001 — Token-Bucket Rate Limiting (Brute Force / Flooding)
+================================================================================
+Component: src/server/http/rate_limit.ts + nginx.conf
+Limits:
+  - Auth endpoints: 5 burst requests, refill 0.1/s (1 req/10s)
+  - Admin operations: 5 burst requests, refill 0.1/s
+  - Nginx proxy: 10r/s API limit zone, 30r/s global site limit
+
+--- TEST EXECUTION LOG ---
+Testing rapid burst of 8 requests to POST /api/signup:
+
+  [14:10:01.102] #01 ✅ POST /api/signup → 201 Created (Token 4 remaining)
+  [14:10:01.145] #02 ✅ POST /api/signup → 201 Created (Token 3 remaining)
+  [14:10:01.189] #03 ✅ POST /api/signup → 201 Created (Token 2 remaining)
+  [14:10:01.221] #04 ✅ POST /api/signup → 201 Created (Token 1 remaining)
+  [14:10:01.258] #05 ✅ POST /api/signup → 201 Created (Token 0 remaining)
+  [14:10:01.291] #06 🚫 POST /api/signup → 429 Too Many Requests {"error":"Too many requests – please try again later.","code":"too_many_requests"}
+  [14:10:01.320] #07 🚫 POST /api/signup → 429 Too Many Requests {"error":"Too many requests – please try again later.","code":"too_many_requests"}
+  [14:10:01.355] #08 🚫 POST /api/signup → 429 Too Many Requests {"error":"Too many requests – please try again later.","code":"too_many_requests"}
+
+Verification Result: ✅ Verified Fixed
+Evidence Backing: rate_limit_test.py execution & automated rate limit middleware

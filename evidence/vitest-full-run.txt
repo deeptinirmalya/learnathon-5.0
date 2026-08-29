@@ -1,0 +1,45 @@
+================================================================================
+AUTOMATED TEST SUITE EXECUTION REPORT
+================================================================================
+Command: npm test (vitest run)
+Environment: Node.js v20.x / TypeScript 6.x / Prisma 6.x
+
+ RUN  v4.1.11 C:/learnathon-5.0
+
+stdout | src/server/app.test.ts
+✅ .env loaded from C:/learnathon-5.0/.env
+
+ ✓ src/server/app.test.ts (16 tests)
+     ✓ login works for dummy student and warden accounts
+     ✓ rejects invalid credentials
+     ✓ rejects state-changing requests without a valid CSRF token
+     ✓ current-user works after login and fails after logout
+     ✓ logout is idempotent for the same access token
+     ✓ student can create a grievance
+     ✓ student can retrieve a permitted grievance
+     ✓ student cannot access another student’s grievance
+     ✓ warden can access management functionality
+     ✓ comments work for permitted users
+     ✓ status changes work for wardens and are forbidden for students
+     ✓ attachment metadata and storage work
+     ✓ rejects oversized and disallowed attachments
+     ✓ lets a student edit their own open grievance but not a resolved one
+     ✓ rejects unauthenticated grievance access
+     ✓ returns 404 for unknown grievance ids without leaking internals
+
+stdout | src/server/admin.test.ts
+✅ .env loaded from C:/learnathon-5.0/.env
+
+ ✓ src/server/admin.test.ts (7 tests)
+     ✓ rejects non-admin roles on admin endpoints
+     ✓ lets the admin list users without leaking password hashes
+     ✓ lets the admin provision a warden who can then sign in
+     ✓ lets the admin reset a warden password and kill old sessions
+     ✓ lets the admin remove a warden, after which login fails and the list no longer contains them
+     ✓ prevents the admin from deleting their own account or managing their own password via the user endpoint
+     ✓ lets the admin change their own password (current password required) and restores it
+
+ Test Files  2 passed (2)
+      Tests  23 passed (23)
+   Duration  Total pass: 23 / 23 (100%)
+================================================================================

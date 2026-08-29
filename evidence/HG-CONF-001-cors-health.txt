@@ -1,0 +1,42 @@
+================================================================================
+TEST EVIDENCE: HG-CONF-001 — Dynamic CORS & Health Monitoring
+================================================================================
+Endpoints: GET /api/health, OPTIONS /api/* preflight
+
+--- HEALTH CHECK VERIFICATION ---
+Request:
+GET /api/health HTTP/1.1
+Host: localhost:3001
+
+Response:
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{
+  "status": "healthy",
+  "database": "connected",
+  "timestamp": "2026-08-29T14:12:00.000Z"
+}
+
+--- CORS PREFLIGHT VERIFICATION ---
+Request from Unauthorized Origin (https://evil.com):
+OPTIONS /api/grievances HTTP/1.1
+Origin: https://evil.com
+Access-Control-Request-Method: POST
+
+Response:
+HTTP/1.1 204 No Content
+(No Access-Control-Allow-Origin header returned for untrusted origin)
+
+Request from Configured Allowed Origin (http://localhost:3000):
+OPTIONS /api/grievances HTTP/1.1
+Origin: http://localhost:3000
+Access-Control-Request-Method: POST
+
+Response:
+HTTP/1.1 204 No Content
+Access-Control-Allow-Origin: http://localhost:3000
+Access-Control-Allow-Credentials: true
+
+Verification Result: ✅ Verified Fixed
+Evidence Backing: src/server/app.ts dynamic CORS config & health endpoint

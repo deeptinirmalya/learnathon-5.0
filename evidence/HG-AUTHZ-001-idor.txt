@@ -1,0 +1,53 @@
+================================================================================
+TEST EVIDENCE: HG-AUTHZ-001 — Horizontal Privilege Escalation (IDOR) on Grievance
+================================================================================
+Endpoint: GET /api/grievances/GRV-0003
+Authenticated User: Student A (stu-1, Aarav Mehta)
+Resource Owner: Student B (stu-2, Priya Nair)
+
+--- BEFORE REMEDIATION ---
+Request:
+GET /api/grievances/GRV-0003 HTTP/1.1
+Host: localhost:3001
+Cookie: hg_access_token=<JWT_STUDENT_A>
+
+Response:
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{
+  "data": {
+    "id": "GRV-0003",
+    "studentId": "stu-2",
+    "title": "Wi-Fi keeps disconnecting in Block A",
+    "category": "Internet",
+    "description": "Signal strength is fine but DNS resolution drops every few minutes.",
+    "status": "open",
+    "createdAt": "2026-08-15T20:00:00.000Z",
+    "comments": [
+      {
+        "id": "cmt-5",
+        "authorId": "war-1",
+        "body": "ISP has been notified about the outage in Block A."
+      }
+    ]
+  }
+}
+
+--- AFTER REMEDIATION ---
+Request:
+GET /api/grievances/GRV-0003 HTTP/1.1
+Host: localhost:3001
+Cookie: hg_access_token=<JWT_STUDENT_A>
+
+Response:
+HTTP/1.1 403 Forbidden
+Content-Type: application/json
+
+{
+  "error": "You are not authorized to view this grievance.",
+  "code": "unauthorized"
+}
+
+Verification Result: ✅ Verified Fixed
+Evidence Backing: Automated Test Suite (src/server/app.test.ts: 'student cannot access another student’s grievance')

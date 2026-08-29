@@ -1,0 +1,37 @@
+================================================================================
+TEST EVIDENCE: HG-AUTH-002 — JWT Session Invalidation & Token Revocation
+================================================================================
+Endpoints: POST /api/logout, PATCH /api/admin/password, PATCH /api/admin/users/:id/password
+Mechanism: TokenBlacklist table (JTI lookup) + User.tokenVersion global revocation increment
+
+--- BEFORE REMEDIATION ---
+Request:
+1. User logs out via POST /api/logout
+2. User captures old JWT access token and submits to GET /api/me
+Response:
+HTTP/1.1 200 OK (Token remained valid until natural expiry)
+
+--- AFTER REMEDIATION ---
+Request:
+1. User logs out via POST /api/logout
+POST /api/logout HTTP/1.1
+Cookie: hg_access_token=<JWT_TOKEN>; hg_csrf_token=<CSRF_TOKEN>
+X-CSRF-Token: <CSRF_TOKEN>
+
+Response:
+HTTP/1.1 200 OK
+{"message": "Logged out successfully"}
+
+2. Replaying the logged-out JWT token to GET /api/me:
+GET /api/me HTTP/1.1
+Cookie: hg_access_token=<OLD_JWT_TOKEN>
+
+Response:
+HTTP/1.1 401 Unauthorized
+{
+  "error": "Token has been revoked/logged out",
+  "code": "unauthenticated"
+}
+
+Verification Result: ✅ Verified Fixed
+Evidence Backing: Automated Test Suite (src/server/app.test.ts: 'current-user works after login and fails after logout')

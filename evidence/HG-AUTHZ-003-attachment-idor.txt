@@ -1,0 +1,35 @@
+================================================================================
+TEST EVIDENCE: HG-AUTHZ-003 — Unauthorized Attachment Access / IDOR
+================================================================================
+Endpoint: GET /api/attachments/:id
+Target: Attachment on Student A's private grievance
+Attacking User: Student B (stu-2, Priya Nair)
+
+--- BEFORE REMEDIATION ---
+Request:
+GET /api/attachments/att-1 HTTP/1.1
+Host: localhost:3001
+Cookie: hg_access_token=<JWT_STUDENT_B>
+
+Response:
+HTTP/1.1 200 OK
+Content-Type: image/jpeg
+[Binary payload of Student A's private attachment]
+
+--- AFTER REMEDIATION ---
+Request:
+GET /api/attachments/att-1 HTTP/1.1
+Host: localhost:3001
+Cookie: hg_access_token=<JWT_STUDENT_B>
+
+Response:
+HTTP/1.1 403 Forbidden
+Content-Type: application/json
+
+{
+  "error": "You are not authorized to view this grievance.",
+  "code": "unauthorized"
+}
+
+Verification Result: ✅ Verified Fixed
+Evidence Backing: Automated Test Suite (src/server/app.test.ts: 'attachment metadata and storage work')

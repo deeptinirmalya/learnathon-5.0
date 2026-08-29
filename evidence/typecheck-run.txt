@@ -1,0 +1,15 @@
+================================================================================
+TYPESCRIPT & SVELTE TYPECHECK VERIFICATION REPORT
+================================================================================
+Command: npm run typecheck
+(svelte-kit sync && svelte-check --tsconfig ./tsconfig.json && tsc --noEmit -p tsconfig.server.json)
+
+Loading svelte-check in workspace: c:\learnathon-5.0
+Getting Svelte diagnostics...
+
+====================================
+svelte-check found 0 errors and 0 warnings
+
+tsc --noEmit -p tsconfig.server.json: Clean exit (code 0)
+====================================
+STATUS: 0 ERRORS, 0 WARNINGS

@@ -1,0 +1,35 @@
+================================================================================
+TEST EVIDENCE: HG-AUTH-003 — Session Binding Validation (IP / User-Agent Fingerprint)
+================================================================================
+Component: src/server/auth/jwt.ts -> generateFingerprint()
+Mechanism: SHA-256(ip + '|' + userAgent) embedded inside JWT claim `fpt`
+
+--- BEFORE REMEDIATION ---
+Token stolen by an attacker from a different network/browser:
+Request:
+GET /api/me HTTP/1.1
+Host: localhost:3001
+X-Forwarded-For: 203.0.113.42 (Attacker IP)
+User-Agent: Attacker-Agent/1.0
+Cookie: hg_access_token=<STOLEN_JWT>
+
+Response:
+HTTP/1.1 200 OK (Stolen token accepted from different network/client)
+
+--- AFTER REMEDIATION ---
+Request:
+GET /api/me HTTP/1.1
+Host: localhost:3001
+X-Forwarded-For: 203.0.113.42 (Attacker IP)
+User-Agent: Attacker-Agent/1.0
+Cookie: hg_access_token=<STOLEN_JWT>
+
+Response:
+HTTP/1.1 401 Unauthorized
+{
+  "error": "Session binding violation. Please login again.",
+  "code": "unauthenticated"
+}
+
+Verification Result: ✅ Verified Fixed
+Evidence Backing: src/server/auth/jwt.ts requireJwtAuth session binding check

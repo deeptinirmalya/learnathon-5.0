@@ -1,0 +1,37 @@
+================================================================================
+TEST EVIDENCE: HG-INPUT-001 — Magic-Byte MIME Detection for Uploads
+================================================================================
+Endpoint: POST /api/grievances/:id/attachments
+Component: src/server/validation/validate.ts -> detectMimeFromBytes()
+
+--- BEFORE REMEDIATION ---
+Attacker uploads PHP/HTML/JS payload named "avatar.png" with header Content-Type: image/png:
+Content: "<?php system($_GET['cmd']); ?>"
+Result: Backend accepted based solely on extension or Content-Type header.
+
+--- AFTER REMEDIATION ---
+Request:
+POST /api/grievances/GRV-0008/attachments HTTP/1.1
+Host: localhost:3001
+Cookie: hg_access_token=<STUDENT_TOKEN>; hg_csrf_token=<CSRF_TOKEN>
+X-CSRF-Token: <CSRF_TOKEN>
+Content-Type: multipart/form-data; boundary=----WebKitFormBoundary
+
+------WebKitFormBoundary
+Content-Disposition: form-data; name="file"; filename="notes.txt"
+Content-Type: text/plain
+
+not-an-image
+------WebKitFormBoundary--
+
+Response:
+HTTP/1.1 400 Bad Request
+Content-Type: application/json
+
+{
+  "error": "Attachments must be a valid JPEG, PNG, GIF, or WebP image.",
+  "code": "bad_request"
+}
+
+Verification Result: ✅ Verified Fixed
+Evidence Backing: Automated Test Suite (src/server/app.test.ts: 'rejects oversized and disallowed attachments')

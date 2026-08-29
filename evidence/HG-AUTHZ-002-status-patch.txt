@@ -1,0 +1,47 @@
+================================================================================
+TEST EVIDENCE: HG-AUTHZ-002 — Unauthorized Grievance Modification
+================================================================================
+Endpoint: PATCH /api/grievances/GRV-0001 (Status alteration)
+Authenticated User: Student A (stu-1)
+
+--- BEFORE REMEDIATION ---
+Request:
+PATCH /api/grievances/GRV-0001 HTTP/1.1
+Host: localhost:3001
+Cookie: hg_access_token=<JWT_STUDENT_A>
+Content-Type: application/json
+
+{"status": "Resolved"}
+
+Response:
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{
+  "data": {
+    "id": "GRV-0001",
+    "status": "Resolved"
+  }
+}
+
+--- AFTER REMEDIATION ---
+Request:
+PATCH /api/grievances/GRV-0001 HTTP/1.1
+Host: localhost:3001
+Cookie: hg_access_token=<JWT_STUDENT_A>
+X-CSRF-Token: <CSRF_TOKEN>
+Content-Type: application/json
+
+{"status": "Resolved"}
+
+Response:
+HTTP/1.1 403 Forbidden
+Content-Type: application/json
+
+{
+  "error": "Students may not modify grievance status.",
+  "code": "unauthorized"
+}
+
+Verification Result: ✅ Verified Fixed
+Evidence Backing: Automated Test Suite (src/server/app.test.ts: 'status changes work for wardens and are forbidden for students')
