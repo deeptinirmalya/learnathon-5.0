@@ -116,12 +116,5 @@
 				</div>
 			</CardContent>
 		</Card>
-
-		<p class="text-muted-foreground mt-6 text-center text-xs leading-relaxed">
-			Demo environment — development credentials only:<br />
-			Admin: admin@example.test / SecureAdminPass123!<br />
-			Student: student@example.test / SecureStudentPass123!<br />
-			Warden: warden@example.test / SecureWardenPass123!
-		</p>
 	</div>
 </main>

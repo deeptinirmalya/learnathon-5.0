@@ -33,8 +33,6 @@ export const CSRF_TOKEN_COOKIE_NAME = 'hg_csrf_token';
 export const REDIS_URL = process.env.REDIS_URL ?? 'redis://127.0.0.1:6379';
 
 // --- Database Seeding Config ---
-export const SEED_STUDENT_PASSWORD = process.env.SEED_STUDENT_PASSWORD ?? '';
-export const SEED_WARDEN_PASSWORD = process.env.SEED_WARDEN_PASSWORD ?? '';
 export const SEED_ADMIN_PASSWORD = process.env.SEED_ADMIN_PASSWORD ?? '';
 
 // --- Cloudinary Config ---
@@ -46,9 +44,9 @@ export function assertSecretsConfigured(): void {
 	if (!JWT_SECRET) {
 		throw new Error('JWT_SECRET is not set. Provide it via the environment (.env file).');
 	}
-	if (!SEED_STUDENT_PASSWORD || !SEED_WARDEN_PASSWORD || !SEED_ADMIN_PASSWORD) {
+	if (!SEED_ADMIN_PASSWORD) {
 		throw new Error(
-			'Seed passwords are not set. Provide SEED_STUDENT_PASSWORD, SEED_WARDEN_PASSWORD and SEED_ADMIN_PASSWORD via the environment (.env file).'
+			'Seed passwords are not set. Provide SEED_ADMIN_PASSWORD via the environment (.env file).'
 		);
 	}
 }
