@@ -12,7 +12,8 @@ import {
 	revokeRefreshToken,
 	findUserById,
 	createUser,
-	calculateRiskScore
+	calculateRiskScore,
+	hashRefreshToken
 } from '../db/queries.ts';
 import { toPublicUser } from '../db/map.ts';
 import { HttpError } from '../http/errors.ts';
@@ -149,7 +150,8 @@ authRoutes.post('/refresh', rateLimiter({ maxTokens: 10, refillRate: 1.0, mode: 
 	const userId = payload.user_id;
 	const allTokens = await getRefreshTokensForUser(db, userId);
 	
-	const matchingToken = allTokens.find((t) => t.tokenHash === refreshTokenCookie);
+	const hashedIncoming = hashRefreshToken(refreshTokenCookie);
+	const matchingToken = allTokens.find((t) => t.tokenHash === hashedIncoming);
 	
 	if (!matchingToken) {
 		throw new HttpError(401, 'unauthenticated', 'Session not found');
@@ -228,7 +230,7 @@ authRoutes.post('/logout', async (c) => {
 			const refreshTokenCookie = getCookie(c, REFRESH_TOKEN_COOKIE_NAME);
 			if (refreshTokenCookie) {
 				const allTokens = await getRefreshTokensForUser(db, sessionUser.id);
-				const matchingToken = allTokens.find((t) => verifyPassword(refreshTokenCookie, t.tokenHash));
+				const matchingToken = allTokens.find((t) => t.tokenHash === hashRefreshToken(refreshTokenCookie));
 				if (matchingToken) {
 					await revokeRefreshToken(db, matchingToken.id);
 				}

@@ -69,6 +69,54 @@ function getRedisClient(): Redis | null {
 }
 
 // ---------------------------------------------------------------------------
+// 2️⃣ In-memory fallback rate limiter (activates when Redis is unavailable)
+// ---------------------------------------------------------------------------
+interface MemoryBucket {
+	tokens: number;
+	timestamp: number;
+}
+
+const memoryBuckets = new Map<string, MemoryBucket>();
+
+// Periodically clean expired entries to prevent memory leak
+setInterval(() => {
+	const now = Math.floor(Date.now() / 1000);
+	for (const [key, bucket] of memoryBuckets) {
+		// Remove entries idle for more than 5 minutes
+		if (now - bucket.timestamp > 300) {
+			memoryBuckets.delete(key);
+		}
+	}
+}, 60_000).unref(); // unref so it doesn't keep the process alive
+
+/** Clear all in-memory rate-limit state. Useful for test isolation. */
+export function resetMemoryBuckets(): void {
+	memoryBuckets.clear();
+}
+
+function memoryRateLimit(key: string, maxTokens: number, refillRate: number): boolean {
+	const now = Math.floor(Date.now() / 1000);
+	let bucket = memoryBuckets.get(key);
+
+	if (!bucket) {
+		bucket = { tokens: maxTokens, timestamp: now };
+		memoryBuckets.set(key, bucket);
+	}
+
+	const delta = Math.max(0, now - bucket.timestamp);
+	const refill = delta * refillRate;
+	bucket.tokens = Math.min(maxTokens, bucket.tokens + refill);
+	bucket.timestamp = now;
+
+	if (bucket.tokens < 1) {
+		return false; // blocked
+	}
+
+	bucket.tokens -= 1;
+	return true; // allowed
+}
+
+// ---------------------------------------------------------------------------
 // 3️⃣ Main Middleware Factory
 // ---------------------------------------------------------------------------
 interface RateLimiterOptions {
@@ -86,12 +134,6 @@ export function rateLimiter(options: RateLimiterOptions = {}) {
 	}
 
 	return async (c: Context, next: Next) => {
-		const redis = getRedisClient();
-		if (!redis) {
-			console.warn('⚠️ Rate-limiter: Redis is unavailable, bypassing rate limiting.');
-			return next();
-		}
-
 		const now = Math.floor(Date.now() / 1000);
 		const keys: string[] = [];
 
@@ -118,26 +160,44 @@ export function rateLimiter(options: RateLimiterOptions = {}) {
 			keys.push(`rate:ip:${ip}`);
 		}
 
-		for (const key of keys) {
-			try {
-				// We registered 'rateLimit' above, which executes the Lua script
-				// @ts-ignore - custom command added via defineCommand
-				const result = await redis.rateLimit(key, maxTokens, refillRate, now) as [number, string];
-				const allowed = result[0];
+		const redis = getRedisClient();
 
-				if (allowed === 0) {
+		for (const key of keys) {
+			if (redis) {
+				try {
+					// We registered 'rateLimit' above, which executes the Lua script
+					// @ts-ignore - custom command added via defineCommand
+					const result = await redis.rateLimit(key, maxTokens, refillRate, now) as [number, string];
+					const allowed = result[0];
+
+					if (allowed === 0) {
+						if (onBlock) {
+							await onBlock(c, key);
+						}
+						throw new HttpError(429, 'too_many_requests', 'Too many requests – please try again later.');
+					}
+				} catch (exc) {
+					if (exc instanceof HttpError) throw exc; // Re-throw our own 429
+					
+					console.warn(`⚠️ Redis error in rate limiter for ${key}: ${exc}`);
+					console.warn('⚠️ Falling back to in-memory rate limiter.');
+					// Fall through to memory limiter
+					if (!memoryRateLimit(key, maxTokens, refillRate)) {
+						if (onBlock) {
+							await onBlock(c, key);
+						}
+						throw new HttpError(429, 'too_many_requests', 'Too many requests – please try again later.');
+					}
+					break;
+				}
+			} else {
+				// Redis unavailable — use in-memory fallback (fail-closed)
+				if (!memoryRateLimit(key, maxTokens, refillRate)) {
 					if (onBlock) {
 						await onBlock(c, key);
 					}
 					throw new HttpError(429, 'too_many_requests', 'Too many requests – please try again later.');
 				}
-			} catch (exc) {
-				if (exc instanceof HttpError) throw exc; // Re-throw our own 429
-				
-				console.warn(`⚠️ Redis error in rate limiter for ${key}: ${exc}`);
-				// Bypass rate limiting if Redis fails (fail-open)
-				console.warn('⚠️ Bypassing rate limiter due to Redis error.');
-				break;
 			}
 		}
 

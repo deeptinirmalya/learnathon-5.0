@@ -11,6 +11,7 @@ import {
 	SEED_STUDENT_PASSWORD,
 	SEED_WARDEN_PASSWORD
 } from './config.ts';
+import { resetMemoryBuckets } from './http/rate_limit.ts';
 
 function cookieHeader(res: Response): string {
 	const anyHeaders = res.headers as Headers & { getSetCookie?: () => string[] };
@@ -27,33 +28,52 @@ async function login(
 	email: string,
 	password: string,
 	xff: string
-): Promise<{ cookie: string; xff: string }> {
+): Promise<{ cookie: string; xff: string; csrfToken: string }> {
+	const csrfRes = await app.request('/api/csrf', {
+		headers: { 'X-Forwarded-For': xff, 'User-Agent': 'admin-test-agent' }
+	});
+	const csrfJson = await csrfRes.json();
+	const csrfToken = typeof csrfJson.csrfToken === 'string' ? csrfJson.csrfToken : '';
+	const csrfCookie = cookieHeader(csrfRes);
+
 	const res = await app.request('/api/login', {
 		method: 'POST',
 		headers: {
 			'Content-Type': 'application/json',
 			'X-Forwarded-For': xff,
-			'User-Agent': 'admin-test-agent'
+			'User-Agent': 'admin-test-agent',
+			'X-CSRF-Token': csrfToken,
+			Cookie: csrfCookie
 		},
 		body: JSON.stringify({ email, password })
 	});
-	return { cookie: cookieHeader(res), xff };
+	const authCookies = cookieHeader(res);
+	const combinedCookie = [csrfCookie, authCookies].filter(Boolean).join('; ');
+	return { cookie: combinedCookie, xff, csrfToken };
 }
 
-function headersFor(cookie: string, xff: string): Record<string, string> {
-	return { Cookie: cookie, 'X-Forwarded-For': xff, 'User-Agent': 'admin-test-agent' };
+function headersFor(cookie: string, xff: string, csrfToken?: string): Record<string, string> {
+	const headers: Record<string, string> = { Cookie: cookie, 'X-Forwarded-For': xff, 'User-Agent': 'admin-test-agent' };
+	if (csrfToken) {
+		headers['X-CSRF-Token'] = csrfToken;
+	}
+	return headers;
 }
 
 describe('Admin feature: warden management and password control', () => {
 	let dir: string;
 	let app: ReturnType<typeof createApp>;
+	let db: ReturnType<typeof openDatabase>;
 	const createdWardens: string[] = [];
 
-	beforeEach(() => {
+	beforeEach(async () => {
+		resetMemoryBuckets();
+		if (!db) {
+			db = openDatabase();
+		}
 		dir = mkdtempSync(join(tmpdir(), 'hg-admin-'));
-		const db = openDatabase(join(dir, 'hostel.db'));
 		const uploadDir = join(dir, 'uploads');
-		seedDatabase(db, uploadDir);
+		await seedDatabase(db, uploadDir);
 		app = createApp({ db, uploadsDir: uploadDir });
 	});
 
@@ -63,15 +83,16 @@ describe('Admin feature: warden management and password control', () => {
 
 	afterAll(async () => {
 		// Best-effort cleanup of any warden accounts created by these tests.
-		const db = openDatabase();
-		for (const id of createdWardens) {
-			try {
-				await db.user.delete({ where: { id } });
-			} catch {
-				/* already removed */
+		if (db) {
+			for (const id of createdWardens) {
+				try {
+					await db.user.delete({ where: { id } });
+				} catch {
+					/* already removed */
+				}
 			}
+			await db.$disconnect();
 		}
-		await db.$disconnect();
 	});
 
 	it('rejects non-admin roles on admin endpoints', async () => {
@@ -107,7 +128,7 @@ describe('Admin feature: warden management and password control', () => {
 		const email = `warden-${Date.now()}@giet.edu`;
 		const created = await app.request('/api/admin/wardens', {
 			method: 'POST',
-			headers: { 'Content-Type': 'application/json', ...headersFor(admin.cookie, admin.xff) },
+			headers: { 'Content-Type': 'application/json', ...headersFor(admin.cookie, admin.xff, admin.csrfToken) },
 			body: JSON.stringify({ name: 'Test Warden', email, password: 'NewWardenPass123!' })
 		});
 		expect(created.status).toBe(201);
@@ -121,7 +142,7 @@ describe('Admin feature: warden management and password control', () => {
 		// Duplicate email is rejected.
 		const dup = await app.request('/api/admin/wardens', {
 			method: 'POST',
-			headers: { 'Content-Type': 'application/json', ...headersFor(admin.cookie, admin.xff) },
+			headers: { 'Content-Type': 'application/json', ...headersFor(admin.cookie, admin.xff, admin.csrfToken) },
 			body: JSON.stringify({ name: 'Duplicate Warden', email, password: 'AnotherPass123!' })
 		});
 		expect(dup.status).toBe(409);
@@ -132,7 +153,7 @@ describe('Admin feature: warden management and password control', () => {
 		const email = `warden-reset-${Date.now()}@giet.edu`;
 		const created = await app.request('/api/admin/wardens', {
 			method: 'POST',
-			headers: { 'Content-Type': 'application/json', ...headersFor(admin.cookie, admin.xff) },
+			headers: { 'Content-Type': 'application/json', ...headersFor(admin.cookie, admin.xff, admin.csrfToken) },
 			body: JSON.stringify({ name: 'Reset Warden', email, password: 'InitialPass123!' })
 		});
 		const createdJson = await created.json();
@@ -141,7 +162,7 @@ describe('Admin feature: warden management and password control', () => {
 
 		const reset = await app.request(`/api/admin/users/${wardenId}/password`, {
 			method: 'PATCH',
-			headers: { 'Content-Type': 'application/json', ...headersFor(admin.cookie, admin.xff) },
+			headers: { 'Content-Type': 'application/json', ...headersFor(admin.cookie, admin.xff, admin.csrfToken) },
 			body: JSON.stringify({ password: 'ResetPass123!' })
 		});
 		expect(reset.status).toBe(200);
@@ -158,7 +179,7 @@ describe('Admin feature: warden management and password control', () => {
 		const email = `warden-remove-${Date.now()}@giet.edu`;
 		const created = await app.request('/api/admin/wardens', {
 			method: 'POST',
-			headers: { 'Content-Type': 'application/json', ...headersFor(admin.cookie, admin.xff) },
+			headers: { 'Content-Type': 'application/json', ...headersFor(admin.cookie, admin.xff, admin.csrfToken) },
 			body: JSON.stringify({ name: 'Doomed Warden', email, password: 'DoomedPass123!' })
 		});
 		const createdJson = await created.json();
@@ -167,7 +188,7 @@ describe('Admin feature: warden management and password control', () => {
 
 		const removed = await app.request(`/api/admin/users/${wardenId}`, {
 			method: 'DELETE',
-			headers: headersFor(admin.cookie, admin.xff)
+			headers: headersFor(admin.cookie, admin.xff, admin.csrfToken)
 		});
 		expect(removed.status).toBe(200);
 
@@ -185,13 +206,13 @@ describe('Admin feature: warden management and password control', () => {
 		const admin = await login(app, 'admin@example.test', SEED_ADMIN_PASSWORD, '10.0.105.1');
 		const selfDelete = await app.request('/api/admin/users/admin-1', {
 			method: 'DELETE',
-			headers: headersFor(admin.cookie, admin.xff)
+			headers: headersFor(admin.cookie, admin.xff, admin.csrfToken)
 		});
 		expect(selfDelete.status).toBe(403);
 
 		const selfReset = await app.request('/api/admin/users/admin-1/password', {
 			method: 'PATCH',
-			headers: { 'Content-Type': 'application/json', ...headersFor(admin.cookie, admin.xff) },
+			headers: { 'Content-Type': 'application/json', ...headersFor(admin.cookie, admin.xff, admin.csrfToken) },
 			body: JSON.stringify({ password: 'SneakyPass123!' })
 		});
 		expect(selfReset.status).toBe(400);
@@ -202,14 +223,14 @@ describe('Admin feature: warden management and password control', () => {
 
 		const wrongCurrent = await app.request('/api/admin/password', {
 			method: 'PATCH',
-			headers: { 'Content-Type': 'application/json', ...headersFor(admin.cookie, admin.xff) },
+			headers: { 'Content-Type': 'application/json', ...headersFor(admin.cookie, admin.xff, admin.csrfToken) },
 			body: JSON.stringify({ currentPassword: 'not-the-password', newPassword: 'TempAdminPass123!' })
 		});
 		expect(wrongCurrent.status).toBe(401);
 
 		const changed = await app.request('/api/admin/password', {
 			method: 'PATCH',
-			headers: { 'Content-Type': 'application/json', ...headersFor(admin.cookie, admin.xff) },
+			headers: { 'Content-Type': 'application/json', ...headersFor(admin.cookie, admin.xff, admin.csrfToken) },
 			body: JSON.stringify({ currentPassword: SEED_ADMIN_PASSWORD, newPassword: 'TempAdminPass123!' })
 		});
 		expect(changed.status).toBe(200);
@@ -223,7 +244,7 @@ describe('Admin feature: warden management and password control', () => {
 		// Restore the original admin password so the lab accounts stay consistent.
 		const restored = await app.request('/api/admin/password', {
 			method: 'PATCH',
-			headers: { 'Content-Type': 'application/json', ...headersFor(newLogin.cookie, newLogin.xff) },
+			headers: { 'Content-Type': 'application/json', ...headersFor(newLogin.cookie, newLogin.xff, newLogin.csrfToken) },
 			body: JSON.stringify({ currentPassword: 'TempAdminPass123!', newPassword: SEED_ADMIN_PASSWORD })
 		});
 		expect(restored.status).toBe(200);

@@ -1,5 +1,6 @@
 import '../load-env.ts';
 import { resetDatabase } from '../db/reset.ts';
 
-resetDatabase();
-console.log('Reset complete: data/hostel.db and uploads/ restored to the seeded lab state.');
+await resetDatabase();
+console.log('Reset complete: Neon database and uploads/ restored to the seeded lab state.');
+

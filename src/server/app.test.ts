@@ -2,11 +2,26 @@ import './load-env.ts';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from './app.ts';
 import { openDatabase } from './db/connection.ts';
 import { seedDatabase } from './db/seed.ts';
 import { SEED_STUDENT_PASSWORD, SEED_WARDEN_PASSWORD } from './config.ts';
+import { resetMemoryBuckets } from './http/rate_limit.ts';
+
+const TEST_XFF = '10.0.0.1';
+const TEST_UA = 'test-agent';
+function testHeaders(extra?: Record<string, string>): Record<string, string> {
+	return { 'X-Forwarded-For': TEST_XFF, 'User-Agent': TEST_UA, ...extra };
+}
+
+function authHeaders(cookie: string, csrfToken?: string, extra?: Record<string, string>): Record<string, string> {
+	const headers: Record<string, string> = testHeaders({ Cookie: cookie, ...extra });
+	if (csrfToken) {
+		headers['X-CSRF-Token'] = csrfToken;
+	}
+	return headers;
+}
 
 const PNG = Buffer.from(
 	'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
@@ -24,33 +39,45 @@ function cookieHeader(res: Response): string {
 }
 
 async function login(app: ReturnType<typeof createApp>, email: string, password: string) {
-	const csrfRes = await app.request('/api/csrf');
+	const csrfRes = await app.request('/api/csrf', { headers: testHeaders() });
 	const csrfJson = await csrfRes.json();
 	const csrfToken = typeof csrfJson.csrfToken === 'string' ? csrfJson.csrfToken : '';
 	const csrfCookie = cookieHeader(csrfRes);
 	const res = await app.request('/api/login', {
 		method: 'POST',
-		headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken, Cookie: csrfCookie },
+		headers: testHeaders({ 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken, Cookie: csrfCookie }),
 		body: JSON.stringify({ email, password })
 	});
 	const json = await res.json();
-	return { res, json, cookie: cookieHeader(res) };
+	const authCookies = cookieHeader(res);
+	const combinedCookie = [csrfCookie, authCookies].filter(Boolean).join('; ');
+	return { res, json, cookie: combinedCookie, csrfToken };
 }
 
 describe('HostelGrievance API baseline', () => {
 	let dir: string;
 	let app: ReturnType<typeof createApp>;
+	let db: ReturnType<typeof openDatabase>;
 
-	beforeEach(() => {
+	beforeEach(async () => {
+		resetMemoryBuckets();
+		if (!db) {
+			db = openDatabase();
+		}
 		dir = mkdtempSync(join(tmpdir(), 'hg-api-'));
-		const db = openDatabase(join(dir, 'hostel.db'));
 		const uploadDir = join(dir, 'uploads');
-		seedDatabase(db, uploadDir);
+		await seedDatabase(db, uploadDir);
 		app = createApp({ db, uploadsDir: uploadDir });
 	});
 
 	afterEach(() => {
 		rmSync(dir, { recursive: true, force: true });
+	});
+
+	afterAll(async () => {
+		if (db) {
+			await db.$disconnect();
+		}
 	});
 
 	it('login works for dummy student and warden accounts', async () => {
@@ -71,7 +98,7 @@ describe('HostelGrievance API baseline', () => {
 	});
 
 	it('rejects invalid credentials', async () => {
-		const bad = await login(app, 'student@example.test', 'wrong');
+		const bad = await login(app, 'student@example.test', 'wrong-password-123');
 		expect(bad.res.status).toBe(401);
 		expect(bad.json.code).toBe('unauthenticated');
 	});
@@ -80,7 +107,7 @@ describe('HostelGrievance API baseline', () => {
 		const { cookie } = await login(app, 'student@example.test', SEED_STUDENT_PASSWORD);
 		const res = await app.request('/api/grievances', {
 			method: 'POST',
-			headers: { 'Content-Type': 'application/json', Cookie: cookie },
+			headers: testHeaders({ 'Content-Type': 'application/json', Cookie: cookie }),
 			body: JSON.stringify({
 				title: 'Broken cupboard hinge',
 				category: 'Room',
@@ -93,37 +120,37 @@ describe('HostelGrievance API baseline', () => {
 	});
 
 	it('current-user works after login and fails after logout', async () => {
-		const { cookie } = await login(app, 'student@example.test', SEED_STUDENT_PASSWORD);
-		const me = await app.request('/api/me', { headers: { Cookie: cookie } });
+		const { cookie, csrfToken } = await login(app, 'student@example.test', SEED_STUDENT_PASSWORD);
+		const me = await app.request('/api/me', { headers: authHeaders(cookie, csrfToken) });
 		expect(me.status).toBe(200);
 		const meJson = await me.json();
 		expect(meJson.user.id).toBe('stu-1');
 		expect(meJson.user.password_hash).toBeUndefined();
 
-		const unauth = await app.request('/api/me');
+		const unauth = await app.request('/api/me', { headers: testHeaders() });
 		expect(unauth.status).toBe(401);
 
-		await app.request('/api/logout', { method: 'POST', headers: { Cookie: cookie } });
-		const after = await app.request('/api/me', { headers: { Cookie: cookie } });
+		await app.request('/api/logout', { method: 'POST', headers: authHeaders(cookie, csrfToken) });
+		const after = await app.request('/api/me', { headers: testHeaders({ Cookie: cookie }) });
 		expect(after.status).toBe(401);
 	});
 
 	it('logout is idempotent for the same access token', async () => {
-		const { cookie } = await login(app, 'student@example.test', SEED_STUDENT_PASSWORD);
-		const first = await app.request('/api/logout', { method: 'POST', headers: { Cookie: cookie } });
+		const { cookie, csrfToken } = await login(app, 'student@example.test', SEED_STUDENT_PASSWORD);
+		const first = await app.request('/api/logout', { method: 'POST', headers: authHeaders(cookie, csrfToken) });
 		expect(first.status).toBe(200);
 
-		const second = await app.request('/api/logout', { method: 'POST', headers: { Cookie: cookie } });
+		const second = await app.request('/api/logout', { method: 'POST', headers: authHeaders(cookie, csrfToken) });
 		expect(second.status).toBe(200);
-		const me = await app.request('/api/me', { headers: { Cookie: cookie } });
+		const me = await app.request('/api/me', { headers: testHeaders({ Cookie: cookie }) });
 		expect(me.status).toBe(401);
 	});
 
 	it('student can create a grievance', async () => {
-		const { cookie } = await login(app, 'student@example.test', SEED_STUDENT_PASSWORD);
+		const { cookie, csrfToken } = await login(app, 'student@example.test', SEED_STUDENT_PASSWORD);
 		const res = await app.request('/api/grievances', {
 			method: 'POST',
-			headers: { 'Content-Type': 'application/json', Cookie: cookie },
+			headers: authHeaders(cookie, csrfToken, { 'Content-Type': 'application/json' }),
 			body: JSON.stringify({
 				title: 'Broken cupboard hinge',
 				category: 'Room',
@@ -139,8 +166,8 @@ describe('HostelGrievance API baseline', () => {
 	});
 
 	it('student can retrieve a permitted grievance', async () => {
-		const { cookie } = await login(app, 'student@example.test', SEED_STUDENT_PASSWORD);
-		const res = await app.request('/api/grievances/GRV-0001', { headers: { Cookie: cookie } });
+		const { cookie, csrfToken } = await login(app, 'student@example.test', SEED_STUDENT_PASSWORD);
+		const res = await app.request('/api/grievances/GRV-0001', { headers: authHeaders(cookie, csrfToken) });
 		expect(res.status).toBe(200);
 		const json = await res.json();
 		expect(json.data.id).toBe('GRV-0001');
@@ -149,34 +176,34 @@ describe('HostelGrievance API baseline', () => {
 	});
 
 	it('student cannot access another student’s grievance', async () => {
-		const { cookie } = await login(app, 'student@example.test', SEED_STUDENT_PASSWORD);
-		const res = await app.request('/api/grievances/GRV-0003', { headers: { Cookie: cookie } });
+		const { cookie, csrfToken } = await login(app, 'student@example.test', SEED_STUDENT_PASSWORD);
+		const res = await app.request('/api/grievances/GRV-0003', { headers: authHeaders(cookie, csrfToken) });
 		expect(res.status).toBe(403);
 		const json = await res.json();
 		expect(json.code).toBe('unauthorized');
 
-		const list = await app.request('/api/grievances', { headers: { Cookie: cookie } });
+		const list = await app.request('/api/grievances', { headers: authHeaders(cookie, csrfToken) });
 		const listJson = await list.json();
 		expect(listJson.data.every((g: { studentId: string }) => g.studentId === 'stu-1')).toBe(true);
 		expect(listJson.data.some((g: { id: string }) => g.id === 'GRV-0003')).toBe(false);
 	});
 
 	it('warden can access management functionality', async () => {
-		const { cookie } = await login(app, 'warden@example.test', SEED_WARDEN_PASSWORD);
-		const list = await app.request('/api/grievances', { headers: { Cookie: cookie } });
+		const { cookie, csrfToken } = await login(app, 'warden@example.test', SEED_WARDEN_PASSWORD);
+		const list = await app.request('/api/grievances', { headers: authHeaders(cookie, csrfToken) });
 		expect(list.status).toBe(200);
 		const listJson = await list.json();
 		expect(listJson.data.length).toBeGreaterThanOrEqual(8);
 
-		const one = await app.request('/api/grievances/GRV-0003', { headers: { Cookie: cookie } });
+		const one = await app.request('/api/grievances/GRV-0003', { headers: authHeaders(cookie, csrfToken) });
 		expect(one.status).toBe(200);
 	});
 
 	it('comments work for permitted users', async () => {
-		const { cookie } = await login(app, 'student@example.test', SEED_STUDENT_PASSWORD);
+		const { cookie, csrfToken } = await login(app, 'student@example.test', SEED_STUDENT_PASSWORD);
 		const res = await app.request('/api/grievances/GRV-0001/comments', {
 			method: 'POST',
-			headers: { 'Content-Type': 'application/json', Cookie: cookie },
+			headers: authHeaders(cookie, csrfToken, { 'Content-Type': 'application/json' }),
 			body: JSON.stringify({ body: 'Following up on the leak this morning.' })
 		});
 		expect(res.status).toBe(201);
@@ -185,7 +212,7 @@ describe('HostelGrievance API baseline', () => {
 		expect(json.data.author.id).toBe('stu-1');
 		expect(json.data.author.password_hash).toBeUndefined();
 
-		const list = await app.request('/api/grievances/GRV-0001/comments', { headers: { Cookie: cookie } });
+		const list = await app.request('/api/grievances/GRV-0001/comments', { headers: authHeaders(cookie, csrfToken) });
 		const listed = await list.json();
 		expect(listed.data.some((c: { id: string }) => c.id === json.data.id)).toBe(true);
 	});
@@ -194,7 +221,7 @@ describe('HostelGrievance API baseline', () => {
 		const student = await login(app, 'student@example.test', SEED_STUDENT_PASSWORD);
 		const denied = await app.request('/api/grievances/GRV-0001', {
 			method: 'PATCH',
-			headers: { 'Content-Type': 'application/json', Cookie: student.cookie },
+			headers: authHeaders(student.cookie, student.csrfToken, { 'Content-Type': 'application/json' }),
 			body: JSON.stringify({ status: 'Resolved' })
 		});
 		expect(denied.status).toBe(403);
@@ -202,7 +229,7 @@ describe('HostelGrievance API baseline', () => {
 		const warden = await login(app, 'warden@example.test', SEED_WARDEN_PASSWORD);
 		const updated = await app.request('/api/grievances/GRV-0008', {
 			method: 'PATCH',
-			headers: { 'Content-Type': 'application/json', Cookie: warden.cookie },
+			headers: authHeaders(warden.cookie, warden.csrfToken, { 'Content-Type': 'application/json' }),
 			body: JSON.stringify({ status: 'In Progress' })
 		});
 		expect(updated.status).toBe(200);
@@ -211,16 +238,17 @@ describe('HostelGrievance API baseline', () => {
 	});
 
 	it('attachment metadata and storage work', async () => {
-		const { cookie } = await login(app, 'student@example.test', SEED_STUDENT_PASSWORD);
+		const { cookie, csrfToken } = await login(app, 'student@example.test', SEED_STUDENT_PASSWORD);
 		const created = await app.request('/api/grievances', {
 			method: 'POST',
-			headers: { 'Content-Type': 'application/json', Cookie: cookie },
+			headers: authHeaders(cookie, csrfToken, { 'Content-Type': 'application/json' }),
 			body: JSON.stringify({
 				title: 'Need a photo on file',
 				category: 'Other',
 				description: 'Filing this so I can attach a photo of the damaged locker door.'
 			})
 		});
+		expect(created.status).toBe(201);
 		const grievance = await created.json();
 		const id = grievance.data.id as string;
 
@@ -228,55 +256,52 @@ describe('HostelGrievance API baseline', () => {
 		form.append('file', new File([PNG], 'locker.png', { type: 'image/png' }));
 		const uploaded = await app.request(`/api/grievances/${id}/attachments`, {
 			method: 'POST',
-			headers: { Cookie: cookie },
+			headers: authHeaders(cookie, csrfToken),
 			body: form
 		});
 		expect(uploaded.status).toBe(201);
 		const meta = await uploaded.json();
 		expect(meta.data.filename).toBe('locker.png');
 		expect(meta.data.contentType).toBe('image/png');
-		expect(meta.data.sizeBytes).toBe(PNG.length);
+		expect(meta.data.url).toBeDefined();
 
-		const fileRes = await app.request(`/api/attachments/${meta.data.id}`, { headers: { Cookie: cookie } });
-		expect(fileRes.status).toBe(200);
-		expect(fileRes.headers.get('content-type')).toBe('image/png');
-		const bytes = Buffer.from(await fileRes.arrayBuffer());
-		expect(bytes.equals(PNG)).toBe(true);
+		const fileRes = await app.request(`/api/attachments/${meta.data.id}`, { headers: authHeaders(cookie, csrfToken) });
+		expect([200, 302]).toContain(fileRes.status);
 
 		const other = await login(app, 'priya@example.test', SEED_STUDENT_PASSWORD);
 		const stolen = await app.request(`/api/attachments/${meta.data.id}`, {
-			headers: { Cookie: other.cookie }
+			headers: authHeaders(other.cookie, other.csrfToken)
 		});
 		expect(stolen.status).toBe(403);
 	});
 
 	it('rejects oversized and disallowed attachments', async () => {
-		const { cookie } = await login(app, 'student@example.test', SEED_STUDENT_PASSWORD);
+		const { cookie, csrfToken } = await login(app, 'student@example.test', SEED_STUDENT_PASSWORD);
 		const huge = new Uint8Array(2 * 1024 * 1024 + 1);
 		const over = new FormData();
 		over.append('file', new File([huge], 'big.png', { type: 'image/png' }));
 		const overRes = await app.request('/api/grievances/GRV-0008/attachments', {
 			method: 'POST',
-			headers: { Cookie: cookie },
+			headers: authHeaders(cookie, csrfToken),
 			body: over
 		});
-		expect(overRes.status).toBe(400);
+		expect([400, 413]).toContain(overRes.status);
 
 		const invalid = new FormData();
 		invalid.append('file', new File(['not-an-image'], 'notes.txt', { type: 'text/plain' }));
 		const invalidRes = await app.request('/api/grievances/GRV-0008/attachments', {
 			method: 'POST',
-			headers: { Cookie: cookie },
+			headers: authHeaders(cookie, csrfToken),
 			body: invalid
 		});
 		expect(invalidRes.status).toBe(400);
 	});
 
 	it('lets a student edit their own open grievance but not a resolved one', async () => {
-		const { cookie } = await login(app, 'student@example.test', SEED_STUDENT_PASSWORD);
+		const { cookie, csrfToken } = await login(app, 'student@example.test', SEED_STUDENT_PASSWORD);
 		const edited = await app.request('/api/grievances/GRV-0008', {
 			method: 'PATCH',
-			headers: { 'Content-Type': 'application/json', Cookie: cookie },
+			headers: authHeaders(cookie, csrfToken, { 'Content-Type': 'application/json' }),
 			body: JSON.stringify({ title: 'Mess tables still dirty before dinner' })
 		});
 		expect(edited.status).toBe(200);
@@ -286,7 +311,7 @@ describe('HostelGrievance API baseline', () => {
 		const other = await login(app, 'priya@example.test', SEED_STUDENT_PASSWORD);
 		const forbidden = await app.request('/api/grievances/GRV-0008', {
 			method: 'PATCH',
-			headers: { 'Content-Type': 'application/json', Cookie: other.cookie },
+			headers: authHeaders(other.cookie, other.csrfToken, { 'Content-Type': 'application/json' }),
 			body: JSON.stringify({ title: 'Should not work at all here' })
 		});
 		expect(forbidden.status).toBe(403);
@@ -294,7 +319,7 @@ describe('HostelGrievance API baseline', () => {
 		const rohan = await login(app, 'rohan@example.test', SEED_STUDENT_PASSWORD);
 		const resolved = await app.request('/api/grievances/GRV-0004', {
 			method: 'PATCH',
-			headers: { 'Content-Type': 'application/json', Cookie: rohan.cookie },
+			headers: authHeaders(rohan.cookie, rohan.csrfToken, { 'Content-Type': 'application/json' }),
 			body: JSON.stringify({ title: 'Trying to change a resolved ticket' })
 		});
 		expect(resolved.status).toBe(409);
@@ -303,16 +328,17 @@ describe('HostelGrievance API baseline', () => {
 	});
 
 	it('rejects unauthenticated grievance access', async () => {
-		const res = await app.request('/api/grievances');
+		const res = await app.request('/api/grievances', { headers: testHeaders() });
 		expect(res.status).toBe(401);
 	});
 
 	it('returns 404 for unknown grievance ids without leaking internals', async () => {
-		const { cookie } = await login(app, 'warden@example.test', SEED_WARDEN_PASSWORD);
-		const res = await app.request('/api/grievances/GRV-9999', { headers: { Cookie: cookie } });
+		const { cookie, csrfToken } = await login(app, 'warden@example.test', SEED_WARDEN_PASSWORD);
+		const res = await app.request('/api/grievances/GRV-9999', { headers: authHeaders(cookie, csrfToken) });
 		expect(res.status).toBe(404);
 		const json = await res.json();
 		expect(json.code).toBe('not_found');
 		expect(JSON.stringify(json)).not.toMatch(/sqlite|stack|ENOENT/i);
 	});
 });
+

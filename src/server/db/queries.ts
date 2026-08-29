@@ -2,7 +2,12 @@ import type { PrismaClient, User, Grievance, Comment, Attachment } from '@prisma
 import { HttpError } from '../http/errors.ts';
 import type { PublicGrievance, SessionUser } from '../types/index.ts';
 import { toPublicAttachment, toPublicComment, toPublicGrievance, toPublicUser } from './map.ts';
-import { randomUUID, randomBytes } from 'node:crypto';
+import { randomUUID, randomBytes, createHash } from 'node:crypto';
+
+/** Hash a refresh token (JWT string) with SHA-256 for safe storage. */
+export function hashRefreshToken(token: string): string {
+	return createHash('sha256').update(token).digest('hex');
+}
 
 export type UserRow = User;
 export type GrievanceRow = Grievance;
@@ -142,7 +147,7 @@ export function assertCanViewGrievance(user: SessionUser, row: GrievanceRow): vo
 
 export async function nextGrievanceId(db: PrismaClient): Promise<string> {
 	while (true) {
-		const randomNum = Math.floor(10000000 + Math.random() * 90000000);
+		const randomNum = Math.floor(1000 + Math.random() * 9000);
 		const id = `GRV-${randomNum}`;
 		const exists = await db.grievance.findUnique({ where: { id } });
 		if (!exists) return id;
@@ -268,12 +273,12 @@ export async function logLoginHistory(db: PrismaClient, userId: string, ip: stri
 	});
 }
 
-export async function saveRefreshToken(db: PrismaClient, userId: string, tokenHash: string, expiresAt: string, ip: string, userAgent: string): Promise<void> {
+export async function saveRefreshToken(db: PrismaClient, userId: string, rawToken: string, expiresAt: string, ip: string, userAgent: string): Promise<void> {
 	await db.refreshToken.create({
 		data: {
 			id: randomUUID(),
 			userId,
-			tokenHash,
+			tokenHash: hashRefreshToken(rawToken),
 			expiresAt,
 			ipAddress: ip,
 			userAgent

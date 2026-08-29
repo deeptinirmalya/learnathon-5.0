@@ -1,6 +1,16 @@
 version: '3.8'
 
 services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --save "" --appendonly no
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   frontend:
     build:
       context: .
@@ -20,12 +30,16 @@ services:
       - HOSTEL_API_PORT=3001
       - DATABASE_URL=${DATABASE_URL}
       - JWT_SECRET=${JWT_SECRET}
-      - REDIS_URL=${REDIS_URL}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
       - CLOUDINARY_CLOUD_NAME=${CLOUDINARY_CLOUD_NAME}
       - CLOUDINARY_API_KEY=${CLOUDINARY_API_KEY}
       - CLOUDINARY_API_SECRET=${CLOUDINARY_API_SECRET}
       - SEED_ADMIN_PASSWORD=${SEED_ADMIN_PASSWORD}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS}
     restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
 
   nginx:
     image: nginx:alpine
@@ -37,3 +51,4 @@ services:
       - frontend
       - backend
     restart: unless-stopped
+

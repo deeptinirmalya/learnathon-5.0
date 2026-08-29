@@ -27,11 +27,15 @@ export function createApp(options: CreateAppOptions) {
         c.set('db', options.db);
         c.set('uploadsDir', options.uploadsDir);
 
-        // Secure HTTP Headers including Content-Security-Policy
-        c.header('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none'; sandbox;");
+        // Secure HTTP Headers
+        c.header('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none';");
         c.header('X-Content-Type-Options', 'nosniff');
         c.header('X-Frame-Options', 'DENY');
         c.header('Referrer-Policy', 'no-referrer');
+        c.header('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+        if (process.env.NODE_ENV === 'production') {
+            c.header('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+        }
 
         await next();
     });
@@ -56,8 +60,12 @@ export function createApp(options: CreateAppOptions) {
     });
 
 
+    const configuredOrigins = process.env.ALLOWED_ORIGINS
+        ? process.env.ALLOWED_ORIGINS.split(',').map((s) => s.trim()).filter(Boolean)
+        : null;
+
     const allowedOrigins = new Set(
-        options.allowedOrigins ?? [
+        options.allowedOrigins ?? configuredOrigins ?? [
             'http://localhost:3000',
             'http://localhost:5173',
         ]
@@ -78,6 +86,27 @@ export function createApp(options: CreateAppOptions) {
 
     app.onError((err, c) => handleError(err, c));
 
+    // Health check endpoint for Docker / LB probes
+    app.get('/api/health', async (c) => {
+        try {
+            await options.db.$queryRaw`SELECT 1`;
+            return c.json({
+                status: 'healthy',
+                database: 'connected',
+                timestamp: new Date().toISOString()
+            });
+        } catch (err: any) {
+            return c.json(
+                {
+                    status: 'unhealthy',
+                    database: 'disconnected',
+                    error: err.message ?? 'DB ping failed',
+                    timestamp: new Date().toISOString()
+                },
+                503
+            );
+        }
+    });
 
     app.notFound((c) => c.json({ error: 'Not found.', code: 'not_found' }, 404));
 
@@ -97,11 +126,13 @@ export function createApp(options: CreateAppOptions) {
     app.route('/api/grievances', grievanceRoutes);
     app.route('/api/attachments', attachmentRoutes);
 
-    app.get(
-        '/api/public-test',
-        rateLimiter({ maxTokens: 5, refillRate: 1.0, mode: 'ip' }),
-        (c) => c.json({ message: 'Hello from the public rate-limited endpoint!' })
-    );
+    if (process.env.NODE_ENV !== 'production') {
+        app.get(
+            '/api/public-test',
+            rateLimiter({ maxTokens: 5, refillRate: 1.0, mode: 'ip' }),
+            (c) => c.json({ message: 'Hello from the public rate-limited endpoint!' })
+        );
+    }
 
 
     app.all('/api/*', () => {

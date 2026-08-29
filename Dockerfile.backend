@@ -11,4 +11,7 @@ ENV NODE_ENV=production
 ENV HOSTEL_API_PORT=3001
 EXPOSE 3001
 
+RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser
+USER appuser
+
 CMD ["npx", "tsx", "src/server/index.ts"]

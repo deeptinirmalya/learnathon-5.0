@@ -33,6 +33,8 @@ export const CSRF_TOKEN_COOKIE_NAME = 'hg_csrf_token';
 export const REDIS_URL = process.env.REDIS_URL ?? 'redis://127.0.0.1:6379';
 
 // --- Database Seeding Config ---
+export const SEED_STUDENT_PASSWORD = process.env.SEED_STUDENT_PASSWORD ?? 'SecureStudentPass123!';
+export const SEED_WARDEN_PASSWORD = process.env.SEED_WARDEN_PASSWORD ?? 'SecureWardenPass123!';
 export const SEED_ADMIN_PASSWORD = process.env.SEED_ADMIN_PASSWORD ?? '';
 
 // --- Cloudinary Config ---

@@ -285,13 +285,15 @@ grievanceRoutes.patch('/:id', rateLimiter({ maxTokens: 10, refillRate: 0.5, mode
 
 	switch (user.role) {
 		case 'student': {
+			if (wantsStatus) {
+				throw new HttpError(403, 'unauthorized', 'Only wardens can change grievance status.');
+			}
 			if (row.status === 'resolved') {
 				throw new HttpError(409, 'conflict', 'Resolved grievances cannot be edited.');
 			}
 			let nextTitle = row.title;
 			let nextDescription = row.description;
 			let nextCategory = row.category;
-			let nextStatus: GrievanceStatusDb = row.status as GrievanceStatusDb;
 
 			// ── Validate each provided field ───────────────────────────────────
 			if (title !== undefined) {
@@ -303,16 +305,10 @@ grievanceRoutes.patch('/:id', rateLimiter({ maxTokens: 10, refillRate: 0.5, mode
 			if (category !== undefined) {
 				nextCategory = parseCategory(validateString('Category', category, 1, 64));
 			}
-			if (status !== undefined) {
-				if (typeof status !== 'string') {
-					throw new HttpError(400, 'bad_request', 'Invalid grievance status.');
-				}
-				nextStatus = statusToDb(status);
-			}
 			const ts = nowIso();
 			await db.grievance.update({
 				where: { id: row.id },
-				data: { title: nextTitle, description: nextDescription, category: nextCategory, status: nextStatus, updatedAt: ts }
+				data: { title: nextTitle, description: nextDescription, category: nextCategory, updatedAt: ts }
 			});
 			break;
 		}

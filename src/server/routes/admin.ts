@@ -99,7 +99,7 @@ adminRoutes.post('/wardens', rateLimiter({ maxTokens: 5, refillRate: 0.1, mode: 
 	return c.json({ success: true, user: toPublicUser(newUser) }, 201);
 });
 
-adminRoutes.patch('/users/:id/password', async (c) => {
+adminRoutes.patch('/users/:id/password', rateLimiter({ maxTokens: 5, refillRate: 0.1, mode: 'user' }), async (c) => {
 	const db = c.get('db');
 	const me = c.get('user')!;
 	const id = validateResourceId(c.req.param('id'));
@@ -136,7 +136,7 @@ adminRoutes.patch('/users/:id/password', async (c) => {
 	return c.json({ success: true, message: 'Password updated successfully. User will be logged out of existing sessions.' });
 });
 
-adminRoutes.delete('/users/:id', async (c) => {
+adminRoutes.delete('/users/:id', rateLimiter({ maxTokens: 5, refillRate: 0.1, mode: 'user' }), async (c) => {
 	const db = c.get('db');
 	const me = c.get('user')!;
 	const id = validateResourceId(c.req.param('id'));
