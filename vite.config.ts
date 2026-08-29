@@ -9,6 +9,9 @@ export default defineConfig({
 			'/api': 'http://127.0.0.1:3001'
 		}
 	},
+	optimizeDeps: {
+		exclude: ['@lucide/svelte', 'lucide-svelte']
+	},
 	plugins: [
 		tailwindcss(),
 		sveltekit({
