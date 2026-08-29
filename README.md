@@ -50,14 +50,22 @@ Start the entire application stack including Nginx, Backend API, SvelteKit Front
 docker compose up -d --build
 ```
 
-#### 🌐 Accessing the Services:
+#### 🌐 Public Browser Access:
 
-| Service | Access URL | Credentials / Notes |
+| Service | Public URL | Credentials / Access Notes |
 | :--- | :--- | :--- |
-| **Main Web Application** | **`http://localhost`** | Served via Nginx Reverse Proxy on Port 80 |
-| **Grafana Observability** | **`http://localhost:3002`** | **Username:** `admin` \| **Password:** `admin` |
-| **Prometheus Metrics** | **`http://localhost:9090`** | Scrapes metrics from backend every 5s |
-| **Raw Metrics Endpoint** | **`http://localhost/api/metrics`** | Node.js runtime & HTTP latency metrics |
+| **🏢 Main Web Application** | **`http://localhost`** *(Port 80)* | Complete Web UI + API served via Nginx Reverse Proxy. |
+| **📊 Grafana Dashboard** | **`http://localhost:3002`** | Live metrics, latency, CPU/Memory charts.<br>**Username:** `admin` \| **Password:** `SecureGrafanaPass123!` *(or `admin`)*<br>*Path:* **Dashboards ➔ Observability ➔ HostelGrievance Production Observability** |
+
+#### 🔒 Internal Docker Network Ports (Private & Isolated):
+
+| Internal Service | Container Port | Connected To | Security & Isolation Status |
+| :--- | :--- | :--- | :--- |
+| **`frontend`** (SvelteKit SSR) | `3000` | Proxied by `nginx` | Private (Accessible via Port 80) |
+| **`backend`** (Hono Node.js API) | `3001` | Proxied by `nginx` & `prometheus` | Private (API reachable via Port 80 `/api/`) |
+| **`redis`** (Redis 7) | `6379` | Connected to `backend` | Private (No public port binding; internal cache) |
+| **`prometheus`** (Metrics Scraper) | `9090` | Queried by `grafana` | Private (Hidden from public internet; zero open host ports) |
+| **`api/metrics`** (Raw Metrics) | `3001/api/metrics` | Scraped by `prometheus` | Protected (Blocked with `403 Forbidden` by Nginx for external visitors) |
 
 ---
 
