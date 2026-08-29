@@ -23,6 +23,10 @@ export function shellNav(role: Role): ShellNavItem[] {
 				{ label: 'Dashboard', href: '/warden', icon: LayoutDashboardIcon },
 				{ label: 'Grievances', href: '/warden/grievances', icon: ClipboardListIcon }
 			];
+		case 'admin':
+			return [
+				{ label: 'Dashboard', href: '/admin', icon: LayoutDashboardIcon }
+			];
 		default: {
 			const _exhaustive: never = role;
 			return _exhaustive;

@@ -1,4 +1,4 @@
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import type { AppEnv } from '../env.ts';
 import { verifyPassword, hashPassword } from '../auth/passwords.ts';
 import {
@@ -11,7 +11,8 @@ import {
 	getRefreshTokensForUser,
 	revokeRefreshToken,
 	findUserById,
-	createUser
+	createUser,
+	calculateRiskScore
 } from '../db/queries.ts';
 import { toPublicUser } from '../db/map.ts';
 import { HttpError } from '../http/errors.ts';
@@ -31,15 +32,43 @@ import {
 	getCookieSettings,
 	JWT_SECRET,
 	ACCESS_TOKEN_COOKIE_NAME,
-	REFRESH_TOKEN_COOKIE_NAME
+	REFRESH_TOKEN_COOKIE_NAME,
+	CSRF_TOKEN_COOKIE_NAME
 } from '../config.ts';
 import { setCookie, deleteCookie, getCookie } from 'hono/cookie';
 import { rateLimiter } from '../http/rate_limit.ts';
+import { randomBytes, timingSafeEqual } from 'node:crypto';
 
 export const authRoutes = new Hono<AppEnv>();
 
 const DUMMY_HASH =
 	'scrypt:00000000000000000000000000000000:00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000';
+
+export function getCsrfTokenValue(): string {
+	return randomBytes(32).toString('hex');
+}
+
+export function validateCsrfToken(c: Context, cookieValue: string | undefined): boolean {
+	const headerValue = c.req.header('x-csrf-token');
+	if (!headerValue || !cookieValue) return false;
+	const expected = Buffer.from(cookieValue);
+	const actual = Buffer.from(headerValue);
+	if (expected.length !== actual.length) return false;
+	try {
+		return timingSafeEqual(expected, actual);
+	} catch {
+		return false;
+	}
+}
+
+authRoutes.get('/csrf', async (c) => {
+	const token = getCsrfTokenValue();
+	setCookie(c, CSRF_TOKEN_COOKIE_NAME, token, {
+		...getCookieSettings(15 * 60),
+		httpOnly: false
+	});
+	return c.json({ csrfToken: token });
+});
 
 authRoutes.post('/login', rateLimiter({ maxTokens: 5, refillRate: 0.1, mode: 'login' }), async (c) => {
 	const db = c.get('db');
@@ -66,7 +95,7 @@ authRoutes.post('/login', rateLimiter({ maxTokens: 5, refillRate: 0.1, mode: 'lo
 	}
 
 	const client = getClientInfo(c);
-	const riskScore = 0; 
+	const riskScore = await calculateRiskScore(db, user.id, client.ip, client.userAgent);
 	await logLoginHistory(db, user.id, client.ip, client.userAgent, client.country, riskScore);
 
 	if (riskScore >= 100) {

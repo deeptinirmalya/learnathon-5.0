@@ -8,7 +8,9 @@ import type {
 	PublicGrievance,
 	PublicUser,
 	GrievanceRow,
-	UserRow
+	UserRow,
+	Role,
+	GrievanceStatusDb
 } from '../types/index.ts';
 
 export function toPublicUser(row: Pick<UserRow, 'id' | 'name' | 'email' | 'role' | 'room'>): PublicUser {
@@ -16,7 +18,7 @@ export function toPublicUser(row: Pick<UserRow, 'id' | 'name' | 'email' | 'role'
 		id: row.id,
 		name: row.name,
 		email: row.email,
-		role: row.role
+		role: row.role as Role
 	};
 	if (row.room) {
 		user.room = row.room;
@@ -55,7 +57,7 @@ export function toPublicGrievance(
 		title: row.title,
 		description: row.description,
 		category: row.category as GrievanceCategory,
-		status: statusToUi(row.status),
+		status: statusToUi(row.status as GrievanceStatusDb),
 		studentId: row.studentId,
 		student,
 		createdAt: row.createdAt,

@@ -41,13 +41,13 @@ export function validateString(field: string, value: unknown, min: number, max: 
 
 // ─── Email ────────────────────────────────────────────────────────────────────
 
-/** Basic RFC-5321 shape: local@domain.tld — no whitespace, max 254 chars. */
-const EMAIL_RE = /^[^\s@]{1,24}@giet.edu/;
+/** GIET University emails only: local@giet.edu — no whitespace, max 254 chars. */
+const EMAIL_RE = /^[^\s@]{1,24}@giet\.edu$/i;
 
 export function validateEmail(value: unknown): string {
 	const s = validateString('Email', value, 3, 254);
 	if (!EMAIL_RE.test(s)) {
-		throw new HttpError(400, 'bad_request', 'Email address is not valid.');
+		throw new HttpError(400, 'bad_request', 'Only @giet.edu email addresses are allowed.');
 	}
 	return s.toLowerCase();
 }

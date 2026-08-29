@@ -5,6 +5,7 @@
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
 	import { signUp } from '$lib/stores/auth.svelte';
+	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
 	import SchoolIcon from '@lucide/svelte/icons/school';
 
 	let name = $state('');
@@ -30,9 +31,9 @@
 			error = 'Email is required.';
 			return;
 		}
-		// Basic validation pattern
-		if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
-			error = 'Please enter a valid email address.';
+		// Only @giet.edu emails allowed
+		if (!/^[^\s@]+@giet\.edu$/i.test(email.trim())) {
+			error = 'Only @giet.edu email addresses are allowed.';
 			return;
 		}
 		if (!password) {
@@ -74,7 +75,7 @@
 		<Card>
 			<CardHeader>
 				<CardTitle>Create an account</CardTitle>
-				<CardDescription>Register as a student to file grievances.</CardDescription>
+				<CardDescription>Register as a student to file grievances. (GIET University email only)</CardDescription>
 			</CardHeader>
 			<CardContent>
 				<form onsubmit={handleSubmit} class="space-y-4" novalidate>
@@ -85,6 +86,7 @@
 							type="text"
 							placeholder="John Doe"
 							bind:value={name}
+							disabled={submitting}
 							aria-invalid={error ? 'true' : undefined}
 						/>
 					</div>
@@ -95,6 +97,7 @@
 							type="email"
 							placeholder="you@giet.edu"
 							bind:value={email}
+							disabled={submitting}
 							aria-invalid={error ? 'true' : undefined}
 						/>
 					</div>
@@ -105,6 +108,7 @@
 							type="text"
 							placeholder="B-204"
 							bind:value={room}
+							disabled={submitting}
 							aria-invalid={error ? 'true' : undefined}
 						/>
 					</div>
@@ -115,6 +119,7 @@
 							type="password"
 							placeholder="••••••••"
 							bind:value={password}
+							disabled={submitting}
 							aria-invalid={error ? 'true' : undefined}
 						/>
 					</div>
@@ -123,8 +128,15 @@
 						<p class="text-destructive text-sm" role="alert">{error}</p>
 					{/if}
 
-					<Button type="submit" class="w-full" disabled={submitting}>
-						{submitting ? 'Registering…' : 'Sign up'}
+					<Button type="submit" class="w-full" disabled={submitting} aria-busy={submitting}>
+						{#if submitting}
+							<span class="flex items-center justify-center gap-2">
+								<LoaderCircle class="size-4 animate-spin" />
+								<span>Registering…</span>
+							</span>
+						{:else}
+							<span>Sign up</span>
+						{/if}
 					</Button>
 				</form>
 

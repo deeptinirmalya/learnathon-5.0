@@ -49,7 +49,7 @@ grievanceRoutes.get('/', async (c) => {
 	const db = c.get('db');
 	const user = await requireJwtAuth(c, db);
 	const rows =
-		user.role === 'warden' ? await listAllGrievanceRows(db) : await listGrievanceRowsForStudent(db, user.id);
+		user.role === 'student' ? await listGrievanceRowsForStudent(db, user.id) : await listAllGrievanceRows(db);
 	return c.json({
 		data: await Promise.all(rows.map(async (row) => await assembleGrievance(db, row)))
 	});
@@ -330,6 +330,9 @@ grievanceRoutes.patch('/:id', rateLimiter({ maxTokens: 10, refillRate: 0.5, mode
 				data: { status: nextStatus, updatedAt: ts }
 			});
 			break;
+		}
+		case 'admin': {
+			throw new HttpError(403, 'unauthorized', 'Admins cannot edit grievances.');
 		}
 		default: {
 			const _exhaustive: never = user.role;

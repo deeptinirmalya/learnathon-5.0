@@ -1,3 +1,4 @@
+import '../load-env.ts';
 import { resetDatabase } from '../db/reset.ts';
 
 resetDatabase();

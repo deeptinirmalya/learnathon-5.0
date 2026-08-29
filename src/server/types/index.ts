@@ -1,4 +1,4 @@
-import type { User, Grievance, Comment, Attachment, Role as PrismaRole } from '@prisma/client';
+import type { User, Grievance, Comment, Attachment } from '@prisma/client';
 
 export type Role = 'student' | 'warden' | 'admin';
 

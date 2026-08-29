@@ -5,6 +5,7 @@
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
 	import { signIn } from '$lib/stores/auth.svelte';
+	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
 	import SchoolIcon from '@lucide/svelte/icons/school';
 
 	let email = $state('');
@@ -18,6 +19,11 @@
 
 		if (!email.trim()) {
 			error = 'Email is required.';
+			return;
+		}
+		// Only @giet.edu emails allowed
+		if (!/^[^\s@]+@giet\.edu$/i.test(email.trim())) {
+			error = 'Only @giet.edu email addresses are allowed.';
 			return;
 		}
 		if (!password) {
@@ -59,7 +65,7 @@
 		<Card>
 			<CardHeader>
 				<CardTitle>Sign in</CardTitle>
-				<CardDescription>Use your university account to continue.</CardDescription>
+				<CardDescription>Use your GIET University @giet.edu account to continue.</CardDescription>
 			</CardHeader>
 			<CardContent>
 				<form onsubmit={handleSubmit} class="space-y-4" novalidate>
@@ -69,8 +75,9 @@
 							id="email"
 							type="email"
 							autocomplete="username"
-							placeholder="you@giet.edu"
+							placeholder="your.email@giet.edu"
 							bind:value={email}
+							disabled={submitting}
 							aria-invalid={error ? 'true' : undefined}
 						/>
 					</div>
@@ -82,6 +89,7 @@
 							autocomplete="current-password"
 							placeholder="••••••••"
 							bind:value={password}
+							disabled={submitting}
 							aria-invalid={error ? 'true' : undefined}
 						/>
 					</div>
@@ -90,8 +98,15 @@
 						<p class="text-destructive text-sm" role="alert">{error}</p>
 					{/if}
 
-					<Button type="submit" class="w-full" disabled={submitting}>
-						{submitting ? 'Signing in…' : 'Sign in'}
+					<Button type="submit" class="w-full" disabled={submitting} aria-busy={submitting}>
+						{#if submitting}
+							<span class="flex items-center justify-center gap-2">
+								<LoaderCircle class="size-4 animate-spin" />
+								<span>Signing in…</span>
+							</span>
+						{:else}
+							<span>Sign in</span>
+						{/if}
 					</Button>
 				</form>
 
@@ -104,9 +119,9 @@
 
 		<p class="text-muted-foreground mt-6 text-center text-xs leading-relaxed">
 			Demo environment — development credentials only:<br />
-			Admin: admin@example.test / admin123<br />
-			Student: student@example.test / student123<br />
-			Warden: warden@example.test / warden123
+			Admin: admin@example.test / SecureAdminPass123!<br />
+			Student: student@example.test / SecureStudentPass123!<br />
+			Warden: warden@example.test / SecureWardenPass123!
 		</p>
 	</div>
 </main>

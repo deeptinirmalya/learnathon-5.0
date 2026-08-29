@@ -3,7 +3,7 @@
  * These mirror the shape the future Hono API will return.
  */
 
-export type Role = 'student' | 'warden';
+export type Role = 'student' | 'warden' | 'admin';
 
 export type GrievanceStatus = 'Open' | 'In Progress' | 'Resolved';
 

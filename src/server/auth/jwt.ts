@@ -6,6 +6,7 @@ import { randomUUID, createHash } from 'node:crypto';
 import { JWT_SECRET, ACCESS_TOKEN_COOKIE_NAME } from '../config.ts';
 import { HttpError } from '../http/errors.ts';
 import { isTokenBlacklisted, findUserById } from '../db/queries.ts';
+import type { SessionUser } from '../types/index.ts';
 
 // Token Expiry times
 export const ACCESS_TOKEN_EXP_MINUTES = 15;
@@ -133,5 +134,5 @@ export async function requireJwtAuth(c: Context, db: PrismaClient) {
 	};
 	
 	c.set('user', sessionUser);
-	return sessionUser;
+	return sessionUser as SessionUser;
 }

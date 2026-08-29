@@ -8,7 +8,7 @@ export type AppEnv = {
 			id: string;
 			name: string;
 			email: string;
-			role: 'student' | 'warden';
+			role: 'student' | 'warden' | 'admin';
 			room: string | null;
 			token_version: number;
 			created_at: string;

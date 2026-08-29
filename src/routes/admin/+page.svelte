@@ -1,7 +1,9 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { listUsers, createWarden, updateUserPassword, deleteUser } from '$lib/api/admin';
-	import type { PublicUser } from '../../server/types/index';
+	import { goto } from '$app/navigation';
+	import { listUsers, createWarden, updateUserPassword, deleteUser, changeMyPassword } from '$lib/api/admin';
+	import { signOut, getSession } from '$lib/stores/auth.svelte';
+	import type { PublicUser } from '../../server/types/index.ts';
 	import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '$lib/components/ui/card/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
@@ -12,6 +14,9 @@
 	import Plus from '@lucide/svelte/icons/plus';
 	import Users from '@lucide/svelte/icons/users';
 	import UserCog from '@lucide/svelte/icons/user-cog';
+	import ShieldCheck from '@lucide/svelte/icons/shield-check';
+
+	const currentAdmin = getSession();
 
 	let users = $state<PublicUser[]>([]);
 	let loading = $state(true);
@@ -21,6 +26,12 @@
 	let email = $state('');
 	let password = $state('');
 	let creating = $state(false);
+
+	// Change my password state
+	let curPw = $state('');
+	let newPw = $state('');
+	let confirmPw = $state('');
+	let changingPw = $state(false);
 
 	async function loadUsers() {
 		try {
@@ -56,8 +67,34 @@
 		}
 	}
 
+	async function handleChangePassword(e: Event) {
+		e.preventDefault();
+		if (!curPw || !newPw || !confirmPw) {
+			toast.error('All fields are required');
+			return;
+		}
+		if (newPw !== confirmPw) {
+			toast.error('New password and confirmation do not match');
+			return;
+		}
+		if (newPw.length < 8) {
+			toast.error('Password must be at least 8 characters');
+			return;
+		}
+		changingPw = true;
+		const result = await changeMyPassword(curPw, newPw);
+		changingPw = false;
+		if (result.ok) {
+			toast.success('Password changed. Please sign in again.');
+			await signOut();
+			await goto('/login', { replaceState: true });
+		} else {
+			toast.error(result.error);
+		}
+	}
+
 	async function handleUpdatePassword(userId: string) {
-		const newPassword = prompt('Enter new password for this user:');
+		const newPassword = prompt('Enter new password for this warden:');
 		if (!newPassword) return;
 		if (newPassword.length < 8) {
 			toast.error('Password must be at least 8 characters');
@@ -66,17 +103,14 @@
 		try {
 			const res = await updateUserPassword(userId, newPassword);
 			toast.success(res.message);
+			await loadUsers();
 		} catch (e: any) {
 			toast.error(e.message || 'Failed to update password');
 		}
 	}
 
-	async function handleDeleteUser(userId: string, userRole: string) {
-		if (userRole === 'admin') {
-			toast.error('Cannot delete an admin account');
-			return;
-		}
-		if (!confirm('Are you sure you want to delete this user? This cannot be undone.')) {
+	async function handleDeleteUser(userId: string) {
+		if (!confirm('Are you sure you want to remove this warden? Their comments will also be deleted. This cannot be undone.')) {
 			return;
 		}
 		try {
@@ -87,12 +121,22 @@
 			toast.error(e.message || 'Failed to delete user');
 		}
 	}
+
+	function roleBadgeClass(role: string): string {
+		if (role === 'admin') return 'bg-red-100 text-red-700';
+		if (role === 'warden') return 'bg-blue-100 text-blue-700';
+		return 'bg-green-100 text-green-700';
+	}
+
+	function isSelf(id: string): boolean {
+		return !!currentAdmin && currentAdmin.id === id;
+	}
 </script>
 
 <svelte:head><title>Admin Dashboard</title></svelte:head>
 
 <div class="grid gap-6 md:grid-cols-[350px_1fr]">
-	<!-- Left Column: Create Warden -->
+	<!-- Left Column: Create Warden + Change password -->
 	<div class="space-y-6">
 		<Card>
 			<CardHeader>
@@ -126,6 +170,35 @@
 				</form>
 			</CardContent>
 		</Card>
+
+		<Card>
+			<CardHeader>
+				<CardTitle class="flex items-center gap-2">
+					<ShieldCheck class="text-primary size-5" />
+					Change My Password
+				</CardTitle>
+				<CardDescription>Update the password for your own admin account.</CardDescription>
+			</CardHeader>
+			<CardContent>
+				<form onsubmit={handleChangePassword} class="space-y-4">
+					<div class="space-y-2">
+						<Label for="current-pw">Current Password</Label>
+						<Input id="current-pw" type="password" autocomplete="current-password" bind:value={curPw} />
+					</div>
+					<div class="space-y-2">
+						<Label for="new-pw">New Password</Label>
+						<Input id="new-pw" type="password" autocomplete="new-password" bind:value={newPw} />
+					</div>
+					<div class="space-y-2">
+						<Label for="confirm-pw">Confirm New Password</Label>
+						<Input id="confirm-pw" type="password" autocomplete="new-password" bind:value={confirmPw} />
+					</div>
+					<Button type="submit" variant="outline" class="w-full" disabled={changingPw}>
+						{changingPw ? 'Updating...' : 'Change password'}
+					</Button>
+				</form>
+			</CardContent>
+		</Card>
 	</div>
 
 	<!-- Right Column: User Management -->
@@ -136,7 +209,7 @@
 					<Users class="text-primary size-5" />
 					User Management
 				</CardTitle>
-				<CardDescription>Manage all students, wardens, and admins in the system.</CardDescription>
+				<CardDescription>Admins can add wardens, reset warden passwords, and remove wardens. Student accounts are read-only here.</CardDescription>
 			</CardHeader>
 			<CardContent>
 				{#if loading}
@@ -160,21 +233,24 @@
 											<div class="text-xs text-muted-foreground">{u.email}</div>
 										</td>
 										<td class="p-3">
-											<span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium 
-												{u.role === 'admin' ? 'bg-red-100 text-red-700' : u.role === 'warden' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}">
-												{u.role}
+											<span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium {roleBadgeClass(u.role)}">
+												{u.role}{isSelf(u.id) ? ' (you)' : ''}
 											</span>
 										</td>
 										<td class="p-3 text-muted-foreground">{u.room || '—'}</td>
 										<td class="p-3 text-right">
-											<div class="flex justify-end gap-2">
-												<Button variant="outline" size="icon" title="Change Password" onclick={() => handleUpdatePassword(u.id)}>
-													<KeyRound class="size-4" />
-												</Button>
-												<Button variant="destructive" size="icon" title="Delete Account" disabled={u.role === 'admin'} onclick={() => handleDeleteUser(u.id, u.role)}>
-													<Trash2 class="size-4" />
-												</Button>
-											</div>
+											{#if u.role === 'warden'}
+												<div class="flex justify-end gap-2">
+													<Button variant="outline" size="icon" title="Change password" onclick={() => handleUpdatePassword(u.id)}>
+														<KeyRound class="size-4" />
+													</Button>
+													<Button variant="destructive" size="icon" title="Remove warden" onclick={() => handleDeleteUser(u.id)}>
+														<Trash2 class="size-4" />
+													</Button>
+												</div>
+											{:else}
+												<span class="text-muted-foreground text-xs">—</span>
+											{/if}
 										</td>
 									</tr>
 								{/each}

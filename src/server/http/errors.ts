@@ -22,6 +22,9 @@ export function handleError(err: unknown, c: Context) {
 	if (err instanceof HttpError) {
 		return jsonError(c, err.status, err.code, err.message);
 	}
-	console.error(err);
+
+	const label = err instanceof Error ? err.name : 'UnknownError';
+	const message = err instanceof Error ? err.message : 'Unknown error';
+	console.error('Unhandled server error:', { label, message });
 	return jsonError(c, 500, 'internal', 'Internal server error.');
 }

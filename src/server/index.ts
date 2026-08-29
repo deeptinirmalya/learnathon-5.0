@@ -1,7 +1,7 @@
 import './load-env.ts';
 import { serve } from '@hono/node-server';
 import { createApp } from './app.ts';
-import { API_PORT, DEFAULT_UPLOADS_DIR } from './config.ts';
+import { API_PORT, DEFAULT_UPLOADS_DIR, assertSecretsConfigured } from './config.ts';
 import { openDatabase } from './db/connection.ts';
 import { userCount } from './db/queries.ts';
 import { seedDatabase } from './db/seed.ts';
@@ -9,6 +9,7 @@ import { ensureUploadsDir } from './storage/attachments.ts';
 
 const uploadsDir = DEFAULT_UPLOADS_DIR;
 ensureUploadsDir(uploadsDir);
+assertSecretsConfigured();
 const db = openDatabase();
 
 async function init() {

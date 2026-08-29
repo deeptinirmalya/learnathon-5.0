@@ -1,3 +1,4 @@
+import './load-env.ts';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -23,9 +24,13 @@ function cookieHeader(res: Response): string {
 }
 
 async function login(app: ReturnType<typeof createApp>, email: string, password: string) {
+	const csrfRes = await app.request('/api/csrf');
+	const csrfJson = await csrfRes.json();
+	const csrfToken = typeof csrfJson.csrfToken === 'string' ? csrfJson.csrfToken : '';
+	const csrfCookie = cookieHeader(csrfRes);
 	const res = await app.request('/api/login', {
 		method: 'POST',
-		headers: { 'Content-Type': 'application/json' },
+		headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken, Cookie: csrfCookie },
 		body: JSON.stringify({ email, password })
 	});
 	const json = await res.json();
@@ -71,6 +76,22 @@ describe('HostelGrievance API baseline', () => {
 		expect(bad.json.code).toBe('unauthenticated');
 	});
 
+	it('rejects state-changing requests without a valid CSRF token', async () => {
+		const { cookie } = await login(app, 'student@example.test', SEED_STUDENT_PASSWORD);
+		const res = await app.request('/api/grievances', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json', Cookie: cookie },
+			body: JSON.stringify({
+				title: 'Broken cupboard hinge',
+				category: 'Room',
+				description: 'The cupboard hinge in B-204 is broken.'
+			})
+		});
+		expect(res.status).toBe(403);
+		const json = await res.json();
+		expect(json.code).toBe('forbidden');
+	});
+
 	it('current-user works after login and fails after logout', async () => {
 		const { cookie } = await login(app, 'student@example.test', SEED_STUDENT_PASSWORD);
 		const me = await app.request('/api/me', { headers: { Cookie: cookie } });
@@ -85,6 +106,17 @@ describe('HostelGrievance API baseline', () => {
 		await app.request('/api/logout', { method: 'POST', headers: { Cookie: cookie } });
 		const after = await app.request('/api/me', { headers: { Cookie: cookie } });
 		expect(after.status).toBe(401);
+	});
+
+	it('logout is idempotent for the same access token', async () => {
+		const { cookie } = await login(app, 'student@example.test', SEED_STUDENT_PASSWORD);
+		const first = await app.request('/api/logout', { method: 'POST', headers: { Cookie: cookie } });
+		expect(first.status).toBe(200);
+
+		const second = await app.request('/api/logout', { method: 'POST', headers: { Cookie: cookie } });
+		expect(second.status).toBe(200);
+		const me = await app.request('/api/me', { headers: { Cookie: cookie } });
+		expect(me.status).toBe(401);
 	});
 
 	it('student can create a grievance', async () => {

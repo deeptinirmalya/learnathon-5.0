@@ -1,18 +1,25 @@
 import type { PrismaClient } from '@prisma/client';
 import { hashPassword } from '../auth/passwords.ts';
-import { SEED_STUDENT_PASSWORD, SEED_WARDEN_PASSWORD } from '../config.ts';
+import {
+	SEED_STUDENT_PASSWORD,
+	SEED_WARDEN_PASSWORD,
+	SEED_ADMIN_PASSWORD,
+	assertSecretsConfigured
+} from '../config.ts';
 import { randomUUID } from 'node:crypto';
 
 export async function seedDatabase(db: PrismaClient, uploadsDir: string): Promise<void> {
+	assertSecretsConfigured();
 	const studentHash = hashPassword(SEED_STUDENT_PASSWORD);
 	const wardenHash = hashPassword(SEED_WARDEN_PASSWORD);
+	const adminHash = hashPassword(SEED_ADMIN_PASSWORD);
 
 	const users = [
-		{ id: 'stu-1', name: 'Aarav Mehta', email: 'student@example.test', passwordHash: studentHash, role: 'student', room: 'B-204', createdAt: '2026-08-01T08:00:00.000Z' },
-		{ id: 'stu-2', name: 'Priya Nair', email: 'priya@example.test', passwordHash: studentHash, role: 'student', room: 'A-112', createdAt: '2026-08-01T08:00:00.000Z' },
-		{ id: 'stu-3', name: 'Rohan Das', email: 'rohan@example.test', passwordHash: studentHash, role: 'student', room: 'C-008', createdAt: '2026-08-01T08:00:00.000Z' },
-		{ id: 'war-1', name: 'Mr. K. Sahu', email: 'warden@example.test', passwordHash: wardenHash, role: 'warden', room: null, createdAt: '2026-08-01T08:00:00.000Z' },
-		{ id: 'admin-1', name: 'System Admin', email: 'admin@example.test', passwordHash: hashPassword('admin123'), role: 'admin', room: null, createdAt: '2026-08-01T08:00:00.000Z' }
+		{ id: 'stu-1', name: 'Aarav Mehta', email: 'aarav.mehta@giet.edu', passwordHash: studentHash, role: 'student', room: 'B-204', createdAt: '2026-08-01T08:00:00.000Z' },
+		{ id: 'stu-2', name: 'Priya Nair', email: 'priya.nair@giet.edu', passwordHash: studentHash, role: 'student', room: 'A-112', createdAt: '2026-08-01T08:00:00.000Z' },
+		{ id: 'stu-3', name: 'Rohan Das', email: 'rohan.das@giet.edu', passwordHash: studentHash, role: 'student', room: 'C-008', createdAt: '2026-08-01T08:00:00.000Z' },
+		{ id: 'war-1', name: 'Mr. K. Sahu', email: 'warden@giet.edu', passwordHash: wardenHash, role: 'warden', room: null, createdAt: '2026-08-01T08:00:00.000Z' },
+		{ id: 'admin-1', name: 'System Admin', email: 'admin@giet.edu', passwordHash: adminHash, role: 'admin', room: null, createdAt: '2026-08-01T08:00:00.000Z' }
 	];
 
 	const grievances = [
@@ -47,7 +54,16 @@ export async function seedDatabase(db: PrismaClient, uploadsDir: string): Promis
 	];
 
 	await db.$transaction(async (tx) => {
-		await tx.user.createMany({ data: users, skipDuplicates: true });
+		// Upsert seed accounts so login credentials always match the env-configured
+		// SEED_*_PASSWORD values — even if an older row exists with a different
+		// (previously hardcoded) password hash.
+		for (const user of users) {
+			await tx.user.upsert({
+				where: { email: user.email },
+				update: { name: user.name, passwordHash: user.passwordHash, role: user.role, room: user.room },
+				create: user
+			});
+		}
 		await tx.grievance.createMany({ data: grievances, skipDuplicates: true });
 		await tx.comment.createMany({ data: comments, skipDuplicates: true });
 		await tx.attachment.createMany({ data: attachments, skipDuplicates: true });

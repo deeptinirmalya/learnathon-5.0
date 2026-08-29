@@ -10,7 +10,8 @@
 	let { children } = $props();
 
 	const user = $derived(getSession());
-	const showShell = $derived(!!user && page.url.pathname !== '/login');
+	const isAdminArea = $derived(page.url.pathname.startsWith('/admin'));
+	const showShell = $derived(!!user && page.url.pathname !== '/login' && !isAdminArea);
 </script>
 
 <svelte:head><link rel="icon" href={favicon} /></svelte:head>

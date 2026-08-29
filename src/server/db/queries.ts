@@ -58,7 +58,10 @@ export async function updateUserPassword(db: PrismaClient, id: string, newPasswo
 }
 
 export async function deleteUser(db: PrismaClient, id: string): Promise<void> {
-	await db.user.delete({ where: { id } });
+	await db.$transaction([
+		db.comment.deleteMany({ where: { authorId: id } }),
+		db.user.delete({ where: { id } })
+	]);
 }
 
 export async function findGrievanceRow(db: PrismaClient, id: string): Promise<GrievanceRow | null> {
@@ -123,6 +126,7 @@ export async function requireGrievance(db: PrismaClient, id: string): Promise<Gr
 export function assertCanViewGrievance(user: SessionUser, row: GrievanceRow): void {
 	switch (user.role) {
 		case 'warden':
+		case 'admin':
 			return;
 		case 'student':
 			if (row.studentId !== user.id) {
@@ -183,11 +187,71 @@ export async function isTokenBlacklisted(db: PrismaClient, jti: string): Promise
 }
 
 export async function blacklistToken(db: PrismaClient, jti: string, expiresAt: string): Promise<void> {
-	await db.tokenBlacklist.upsert({
-		where: { jti },
-		update: {},
-		create: { jti, expiresAt }
+	try {
+		await db.tokenBlacklist.upsert({
+			where: { jti },
+			update: { expiresAt },
+			create: { jti, expiresAt }
+		});
+	} catch (error: any) {
+		if (error?.code !== 'P2002') {
+			throw error;
+		}
+		await db.tokenBlacklist.update({
+			where: { jti },
+			data: { expiresAt }
+		});
+	}
+}
+
+/**
+ * Calculate risk score for a login attempt.
+ * Factors:
+ * - New IP/User-Agent combination: +40 points
+ * - Rapid login attempts (3+ in 5 minutes): +35 points
+ * - No prior login history: +25 points
+ */
+export async function calculateRiskScore(
+	db: PrismaClient,
+	userId: string,
+	ip: string,
+	userAgent: string
+): Promise<number> {
+	let riskScore = 0;
+
+	// Fetch login history for this user
+	const recentLogins = await db.loginHistory.findMany({
+		where: { userId },
+		orderBy: { loginAt: 'desc' },
+		take: 10
 	});
+
+	// Factor 1: No prior login history (first login ever)
+	if (recentLogins.length === 0) {
+		riskScore += 25;
+	}
+
+	// Factor 2: Check if this IP/User-Agent combination is new
+	const deviceSeen = recentLogins.some(
+		(login) => login.ipAddress === ip && login.userAgent === userAgent
+	);
+	if (!deviceSeen && recentLogins.length > 0) {
+		riskScore += 40;
+	}
+
+	// Factor 3: Check for rapid login attempts (brute force indicator)
+	const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+	const recentAttempts = await db.loginHistory.count({
+		where: {
+			userId,
+			loginAt: { gte: fiveMinutesAgo }
+		}
+	});
+	if (recentAttempts >= 3) {
+		riskScore += 35;
+	}
+
+	return riskScore;
 }
 
 export async function logLoginHistory(db: PrismaClient, userId: string, ip: string, userAgent: string, country: string, riskScore: number): Promise<void> {

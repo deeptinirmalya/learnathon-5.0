@@ -27,6 +27,20 @@ let refreshPromise: Promise<boolean> | null = null;
 /** Set to true once a redirect to /login has been initiated, to avoid loops. */
 let redirecting = false;
 
+function getCsrfToken(): string {
+	if (typeof document === 'undefined') return '';
+	const cookie = document.cookie.split('; ').find((entry) => entry.startsWith('hg_csrf_token='));
+	return cookie ? decodeURIComponent(cookie.split('=').slice(1).join('=')) : '';
+}
+
+async function ensureCsrfToken(): Promise<string> {
+	const existing = getCsrfToken();
+	if (existing) return existing;
+	const res = await fetch('/api/csrf', { credentials: 'include' });
+	const json = await readJson(res);
+	return typeof json.csrfToken === 'string' ? json.csrfToken : '';
+}
+
 function redirectToLogin() {
 	if (redirecting) return;
 	redirecting = true;
@@ -52,7 +66,14 @@ export function resetRedirecting() {
  * If refresh also fails the user is redirected to /login.
  */
 export async function apiFetch(input: string, init?: RequestInit): Promise<Response> {
-	const res = await fetch(input, { credentials: 'include', ...init });
+	const method = (init?.method ?? 'GET').toUpperCase();
+	const isUnsafe = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method);
+	const headers = new Headers(init?.headers ?? {});
+	if (isUnsafe && input !== '/api/csrf') {
+		const token = getCsrfToken() || (await ensureCsrfToken());
+		if (token) headers.set('X-CSRF-Token', token);
+	}
+	const res = await fetch(input, { credentials: 'include', ...init, headers });
 
 	if (res.status !== 401) return res;
 
@@ -85,10 +106,11 @@ class ApiAuthService implements AuthService {
 	private currentUser: User | null = null;
 
 	async signIn(email: string, password: string): Promise<AuthResult> {
+		const csrfToken = await ensureCsrfToken();
 		const res = await fetch('/api/login', {
 			method: 'POST',
 			credentials: 'include',
-			headers: { 'Content-Type': 'application/json' },
+			headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
 			body: JSON.stringify({ email, password })
 		});
 		const json = await readJson(res);
@@ -106,9 +128,10 @@ class ApiAuthService implements AuthService {
 	}
 
 	async signUp(name: string, email: string, password: string, room: string): Promise<AuthResult> {
+		const csrfToken = await ensureCsrfToken();
 		const res = await fetch('/api/signup', {
 			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
+			headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
 			body: JSON.stringify({ name, email, password, room })
 		});
 		const json = await readJson(res);
@@ -125,7 +148,12 @@ class ApiAuthService implements AuthService {
 		} catch {
 			/* ignore */
 		}
-		await fetch('/api/logout', { method: 'POST', credentials: 'include' });
+		const csrfToken = await ensureCsrfToken();
+		await fetch('/api/logout', {
+			method: 'POST',
+			credentials: 'include',
+			headers: { 'X-CSRF-Token': csrfToken }
+		});
 	}
 
 	restore(): User | null {

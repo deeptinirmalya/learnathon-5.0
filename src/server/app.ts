@@ -1,9 +1,11 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
+import { getCookie } from 'hono/cookie';
 import type { PrismaClient } from '@prisma/client';
 import type { AppEnv } from './env.ts';
 import { handleError, HttpError } from './http/errors.ts';
-import { authRoutes } from './routes/auth.ts';
+import { authRoutes, validateCsrfToken } from './routes/auth.ts';
+import { ACCESS_TOKEN_COOKIE_NAME, CSRF_TOKEN_COOKIE_NAME, REFRESH_TOKEN_COOKIE_NAME } from './config.ts';
 import { grievanceRoutes } from './routes/grievances.ts';
 import { attachmentRoutes } from './routes/attachments.ts';
 import { adminRoutes } from './routes/admin.ts';
@@ -24,13 +26,32 @@ export function createApp(options: CreateAppOptions) {
     app.use('*', async (c, next) => {
         c.set('db', options.db);
         c.set('uploadsDir', options.uploadsDir);
-        
+
         // Secure HTTP Headers including Content-Security-Policy
         c.header('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none'; sandbox;");
         c.header('X-Content-Type-Options', 'nosniff');
         c.header('X-Frame-Options', 'DENY');
         c.header('Referrer-Policy', 'no-referrer');
-        
+
+        await next();
+    });
+
+    app.use('/api/*', async (c, next) => {
+        const method = c.req.method.toUpperCase();
+        const isUnsafe = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method);
+        const hasAuthHeader = !!c.req.header('Authorization');
+        const publicMutations = new Set(['/api/csrf', '/api/login', '/api/signup', '/api/refresh']);
+        const hasAuthCookies = !!(
+            getCookie(c, ACCESS_TOKEN_COOKIE_NAME) || getCookie(c, REFRESH_TOKEN_COOKIE_NAME)
+        );
+
+        if (isUnsafe && !hasAuthHeader && !publicMutations.has(c.req.path) && hasAuthCookies) {
+            const csrfCookie = getCookie(c, CSRF_TOKEN_COOKIE_NAME);
+            const csrfHeader = c.req.header('x-csrf-token');
+            if (!csrfCookie || !csrfHeader || !validateCsrfToken(c, csrfCookie)) {
+                return c.json({ error: 'CSRF token missing or invalid.', code: 'forbidden' }, 403);
+            }
+        }
         await next();
     });
 
@@ -49,7 +70,7 @@ export function createApp(options: CreateAppOptions) {
             origin: (origin) => (allowedOrigins.has(origin) ? origin : null),
             credentials: true,
             allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-            allowHeaders: ['Content-Type', 'Authorization'],
+            allowHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token'],
             maxAge: 600,
         })
     );
