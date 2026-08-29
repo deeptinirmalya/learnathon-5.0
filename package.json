@@ -48,9 +48,10 @@
 	"dependencies": {
 		"@aws-sdk/client-s3": "^3.1120.0",
 		"@hono/node-server": "^2.1.1",
-		"cloudinary": "^2.11.0",
 		"@prisma/client": "^6.19.3",
+		"cloudinary": "^2.11.0",
 		"hono": "^4.13.5",
-		"ioredis": "^5.4.2"
+		"ioredis": "^5.4.2",
+		"prom-client": "^15.1.3"
 	}
 }

@@ -1,0 +1,12 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: 'hostel-grievance-backend'
+    metrics_path: '/api/metrics'
+    static_configs:
+      - targets: ['backend:3001']
+        labels:
+          application: 'hostel-grievance'
+          environment: 'production'

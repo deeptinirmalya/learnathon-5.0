@@ -12,6 +12,7 @@ import { adminRoutes } from './routes/admin.ts';
 import { rateLimiter } from './http/rate_limit.ts';
 import { bodyLimit } from 'hono/body-limit';
 import { MAX_ATTACHMENT_BYTES } from './config.ts';
+import { prometheusMiddleware, register } from './metrics.ts';
 
 export type CreateAppOptions = {
     db: PrismaClient;
@@ -21,6 +22,9 @@ export type CreateAppOptions = {
 
 export function createApp(options: CreateAppOptions) {
     const app = new Hono<AppEnv>();
+
+    // Track Prometheus Metrics
+    app.use('*', prometheusMiddleware);
 
 
     app.use('*', async (c, next) => {
@@ -106,6 +110,17 @@ export function createApp(options: CreateAppOptions) {
                 503
             );
         }
+    });
+
+    // Prometheus Metrics endpoint for Grafana/Prometheus scraping
+    app.get('/api/metrics', async () => {
+        const metrics = await register.metrics();
+        return new Response(metrics, {
+            status: 200,
+            headers: {
+                'Content-Type': register.contentType
+            }
+        });
     });
 
     app.notFound((c) => c.json({ error: 'Not found.', code: 'not_found' }, 404));

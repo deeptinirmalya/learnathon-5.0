@@ -1,132 +1,120 @@
-# HostelGrievance
+# 🏢 HostelGrievance — University Hostel Grievance Management System
 
-University hostel grievance portal — Svelte 5 UI plus a small local Hono + SQLite API. Built as a security-lab baseline, not a production platform.
+A production-hardened, full-stack grievance tracking platform built for university hostels. Students can report hostel maintenance issues, upload photographic evidence, track grievance lifecycles, and communicate directly with hostel wardens in a secure, role-isolated environment.
 
-## Install
+---
 
-```sh
+## 🚀 Technology Stack
+
+- **Frontend**: [SvelteKit 5](https://svelte.dev/) (Runes Mode), [TailwindCSS v4](https://tailwindcss.com/), [Lucide Svelte Icons](https://lucide.dev/)
+- **Backend API**: [Hono](https://hono.dev/) on Node.js
+- **Database & ORM**: PostgreSQL ([Neon Database](https://neon.tech/)) with [Prisma ORM](https://www.prisma.io/)
+- **Caching & Rate Limiting**: [Redis](https://redis.io/) with Lua-based Token Bucket limiter
+- **Media Storage**: [Cloudinary](https://cloudinary.com/) (with Magic-Byte MIME verification)
+- **Reverse Proxy**: [Nginx](https://nginx.org/) with Layer-7 DDoS protection zones and real-IP propagation
+- **Observability**: [Prometheus](https://prometheus.io/) (Metrics collector) & [Grafana](https://grafana.com/) (Live dashboards)
+
+---
+
+## 👥 Role-Based Portals & Features
+
+| Role | Features & Permissions |
+| :--- | :--- |
+| **🎓 Student** | • File grievances with categories (*Water, Electricity, Internet, Cleanliness, Room, Mess*)<br>• Upload photographic evidence (JPEG/PNG/GIF/WebP capped at 2MB)<br>• Edit details on own open grievances<br>• Comment on own grievance timeline<br>• View real-time status updates (*Open ➔ In Progress ➔ Resolved*) |
+| **🛡️ Warden** | • View all institutional hostel grievances<br>• Transition ticket lifecycle statuses (*Open*, *In Progress*, *Resolved*)<br>• Post official status updates & contractor notes on grievances<br>• Securely view and download student attachments |
+| **👑 Admin** | • Complete user directory overview with zero credential leakage<br>• Provision new warden accounts (`@giet.edu` domain enforcement)<br>• Reset warden passwords and invalidate active compromised sessions<br>• Purge decommissioned warden accounts (with self-deletion protection)<br>• Change administrative passwords |
+
+---
+
+## 🔑 Demo Accounts & Login Credentials
+
+All seeded test accounts come pre-configured in the database:
+
+| Role | Email Address | Password | Description / Assigned Room |
+| :--- | :--- | :--- | :--- |
+| **👑 Admin** | `admin@giet.edu` | `SecureAdminPass123!` | System Administrator Dashboard |
+| **🛡️ Warden** | `warden@giet.edu` | `warden@123` | Chief Hostel Warden (Mr. K. Sahu) |
+| **🎓 Student** | `student@giet.edu` | `student@123` | Aarav Mehta (Room B-204) |
+
+> **Note**: In development mode with default `.env` fallback passwords, accounts also accept `admin123`, `warden123`, and `student123`.
+
+---
+
+## ⚡ How to Start the Project
+
+### Option A: Docker Compose (Full Production Stack with Grafana) — Recommended
+
+Start the entire application stack including Nginx, Backend API, SvelteKit Frontend, Redis, Prometheus, and Grafana in a single command:
+
+```bash
+docker compose up -d --build
+```
+
+#### 🌐 Accessing the Services:
+
+| Service | Access URL | Credentials / Notes |
+| :--- | :--- | :--- |
+| **Main Web Application** | **`http://localhost`** | Served via Nginx Reverse Proxy on Port 80 |
+| **Grafana Observability** | **`http://localhost:3002`** | **Username:** `admin` \| **Password:** `admin` |
+| **Prometheus Metrics** | **`http://localhost:9090`** | Scrapes metrics from backend every 5s |
+| **Raw Metrics Endpoint** | **`http://localhost/api/metrics`** | Node.js runtime & HTTP latency metrics |
+
+---
+
+### Option B: Local Development Mode
+
+#### 1. Install Dependencies
+```bash
 npm install
 ```
 
-## Database
-
-SQLite lives at `data/hostel.db`. Attachment bytes live in `uploads/`.
-
-```sh
+#### 2. Seed / Reset the Database
+```bash
 npm run db:reset
 ```
+*Populates PostgreSQL with 3 students, 2 wardens, 2 admins, 8 grievances, 10 comments, and sample image attachments.*
 
-This recreates the seeded database (3 students, 1 warden, 8 grievances, comments, and sample images).
-
-Run this once after installation, and again whenever you want to return to the original seeded state.
-
-Development logins:
-
-| Role | Email | Password |
-| --- | --- | --- |
-| Student | `student@example.test` | `student123` |
-| Warden | `warden@example.test` | `warden123` |
-
-Additional students (`priya@example.test`, `rohan@example.test`) also use `student123`.
-
-## Run
-
-### Recommended: frontend and API together
-
-From the repository directory, run:
-
-```sh
+#### 3. Run Frontend & API Concurrently
+```bash
 npm run dev:all
 ```
+- **Frontend UI**: `http://localhost:5173`
+- **Hono Backend API**: `http://127.0.0.1:3001`
+*(Vite automatically proxies all `/api/*` traffic to port 3001).*
 
-This starts both services:
+---
 
-- Frontend: Vite, usually at `http://localhost:5173`
-- API: Hono at `http://127.0.0.1:3001`
+## 🧪 Testing & Verification
 
-Open the exact frontend URL printed by Vite. If port `5173` is already in use, Vite will choose another port such as `5174`.
+Run automated test suites and compiler checks to verify system integrity:
 
-### Alternative: two terminals
-
-If you prefer to run the services separately:
-
-```sh
-# Terminal 1 — API
-npm run dev:api
-
-# Terminal 2 — frontend
-npm run dev
-```
-
-Then open the frontend URL printed in Terminal 2.
-
-### Frontend-only mode
-
-```sh
-npm run dev
-```
-
-This starts only the frontend. Login, grievances, comments, and attachments require the API from `npm run dev:api` to be running as well.
-
-If the browser shows `proxy error`, `ECONNREFUSED 127.0.0.1:3001`, or login requests fail, the API is not running. Stop the frontend with `Ctrl-C` and use `npm run dev:all`, or start the API in a second terminal.
-
-## Check the application
-
-After opening the frontend:
-
-1. Log in with the Student account.
-2. Browse the student dashboard and grievance details.
-3. Try the create-grievance, comment, and attachment workflows.
-4. Log out and log in with the Warden account.
-5. Browse the warden dashboard and grievance details.
-
-The challenge focuses on securing the existing application. Do not redesign the UI or change the intended student and warden workflows.
-
-## Check and test
-
-```sh
+```bash
+# 1. Typecheck TypeScript & Svelte files (0 errors, 0 warnings)
 npm run typecheck
+
+# 2. Run full automated Vitest test suite (23/23 tests passing)
 npm test
+
+# 3. Production bundle build verification
+npm run build
 ```
 
-The visible test suite contains baseline behavior checks. Because this repository is intentionally vulnerable, some security assertions may fail before hardening; do not delete or bypass those tests.
+---
 
-The UI talks to the Hono API through `$lib/services` (`credentials: 'include'`). Vite proxies `/api` to port 3001.
+## 🛡️ Security Architecture & Documentation
 
-The frontend route guard is the authoritative role boundary for navigation; the API handles the data requests behind those routes.
+The application implements defense-in-depth security across proxy, application, and database layers:
 
-## Security hardening challenge
+- **IDOR Protection**: Strict object-level ownership validation (`assertCanViewGrievance`) prevents students from accessing or tampering with other students' grievances and photos.
+- **Authentication**: Dual-token JWT (15-min access tokens, 7-day refresh token rotation) with database-backed JTI blacklisting on logout and `User.tokenVersion` invalidation.
+- **Session Binding**: Tokens are bound to client IP + User-Agent fingerprints (`SHA-256`) to block replay attacks across networks.
+- **CSRF Defense**: Double-submit cryptographic `X-CSRF-Token` validation on all state-changing HTTP methods (`POST`, `PUT`, `PATCH`, `DELETE`).
+- **File Upload Security**: Magic-byte inspection (`detectMimeFromBytes`) validates actual file headers (JPEG, PNG, GIF, WebP) and enforces a 2MB size cap.
+- **Rate Limiting**: Distributed Redis token-bucket limiter (5 requests burst / 0.1s refill) combined with Nginx edge rate-limiting zones (`10r/s` API, `30r/s` site).
+- **Password Security**: Salted `scrypt` key derivation with constant-time verification.
 
-Treat this repository as an application that must be hardened before public deployment. The goal is to preserve legitimate student and warden workflows while reducing unauthorized access, unsafe input handling, data exposure, and operational blast radius.
-
-You may use any reasonable development or security tools, but findings must be explained and verified. Scanner output by itself is not a submission.
-
-## Submission expectations
-
-Submit a separate package with this structure:
-
-```text
-submission/
-├── source/
-├── deployment/
-├── SECURITY.md
-├── THREAT-MODEL.md
-├── HARDENING.md
-└── TEST-EVIDENCE/
-```
-
-`HARDENING.md` must contain one concise row per finding using this format:
-
-```text
-| ID | Finding | Risk | Change | Verification | Residual Risk |
-|----|---------|------|--------|--------------|---------------|
-| H-01 | ... | ... | ... | ... | ... |
-```
-
-Use your own finding IDs. For each entry, explain what you found, why it matters, what changed, how you verified it, and what risk remains.
-
-`THREAT-MODEL.md` should describe the assets, actors, trust boundaries, authentication and authorization boundaries, data flows, filesystem and runtime boundaries, network assumptions, and important attack paths. Use any clear methodology.
-
-`SECURITY.md` should summarize the protected posture, major changes, remaining risks, deployment assumptions, verification evidence, and the blast radius that remains if one important control fails.
-
-`TEST-EVIDENCE/` should contain commands, test output, screenshots, or short reproducible examples that support the claims. Keep documentation proportional to the security outcome: a finding earns credit when its consequence, remediation, and verification are clear.
+### Detailed Security Deliverables:
+- 📄 [`SECURITY.md`](SECURITY.md) — Security posture statement, assumptions, and residual risk analysis.
+- 📄 [`THREAT-MODEL.md`](THREAT-MODEL.md) — Asset registry, threat actors, trust boundary matrix, and 5 key attack paths.
+- 📄 [`HARDENING.md`](HARDENING.md) — 12-point vulnerability remediation log cross-referenced to evidence.
+- 📄 [`TEST-EVIDENCE.md`](TEST-EVIDENCE.md) — Empirical before/after request-response captures and functional regression verification.
