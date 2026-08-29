@@ -40,6 +40,9 @@ export const CLOUDINARY_CLOUD_NAME = process.env.CLOUDINARY_CLOUD_NAME ?? '';
 export const CLOUDINARY_API_KEY = process.env.CLOUDINARY_API_KEY ?? '';
 export const CLOUDINARY_API_SECRET = process.env.CLOUDINARY_API_SECRET ?? '';
 
+// --- Admin Config ---
+export const ADMIN_SECRET_KEY = process.env.ADMIN_SECRET_KEY ?? 'secret_admin_key_123';
+
 
 const IS_DEV = process.env.NODE_ENV !== 'production';
 

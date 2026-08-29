@@ -1,6 +1,6 @@
-import type { User, Grievance, Comment, Attachment } from '@prisma/client';
+import type { User, Grievance, Comment, Attachment, Role as PrismaRole } from '@prisma/client';
 
-export type Role = 'student' | 'warden';
+export type Role = 'student' | 'warden' | 'admin';
 
 export type GrievanceStatusDb = 'open' | 'in_progress' | 'resolved';
 

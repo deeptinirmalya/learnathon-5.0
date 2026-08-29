@@ -7,12 +7,18 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum Role {
+  student
+  warden
+  admin
+}
+
 model User {
   id             String          @id
   name           String
   email          String          @unique
   passwordHash   String          @map("password_hash")
-  role           String
+  role           Role
   room           String?
   tokenVersion   Int             @default(1) @map("token_version")
   createdAt      String          @map("created_at")

@@ -23,7 +23,7 @@ export async function createUser(
 	name: string,
 	email: string,
 	passwordHash: string,
-	role: 'student' | 'warden',
+	role: 'student' | 'warden' | 'admin',
 	room: string | null
 ): Promise<void> {
 	await db.user.create({
@@ -42,6 +42,23 @@ export async function createUser(
 
 export async function userCount(db: PrismaClient): Promise<number> {
 	return db.user.count();
+}
+
+export async function listAllUsers(db: PrismaClient): Promise<UserRow[]> {
+	return db.user.findMany({
+		orderBy: { createdAt: 'desc' }
+	});
+}
+
+export async function updateUserPassword(db: PrismaClient, id: string, newPasswordHash: string): Promise<void> {
+	await db.user.update({
+		where: { id },
+		data: { passwordHash: newPasswordHash, tokenVersion: { increment: 1 } }
+	});
+}
+
+export async function deleteUser(db: PrismaClient, id: string): Promise<void> {
+	await db.user.delete({ where: { id } });
 }
 
 export async function findGrievanceRow(db: PrismaClient, id: string): Promise<GrievanceRow | null> {

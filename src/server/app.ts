@@ -6,6 +6,7 @@ import { handleError, HttpError } from './http/errors.ts';
 import { authRoutes } from './routes/auth.ts';
 import { grievanceRoutes } from './routes/grievances.ts';
 import { attachmentRoutes } from './routes/attachments.ts';
+import { adminRoutes } from './routes/admin.ts';
 import { rateLimiter } from './http/rate_limit.ts';
 import { bodyLimit } from 'hono/body-limit';
 import { MAX_ATTACHMENT_BYTES } from './config.ts';
@@ -60,6 +61,7 @@ export function createApp(options: CreateAppOptions) {
     app.notFound((c) => c.json({ error: 'Not found.', code: 'not_found' }, 404));
 
     app.route('/api', authRoutes);
+    app.route('/api/admin', adminRoutes);
 
     app.use(
         '/api/grievances/*',

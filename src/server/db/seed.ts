@@ -11,7 +11,8 @@ export async function seedDatabase(db: PrismaClient, uploadsDir: string): Promis
 		{ id: 'stu-1', name: 'Aarav Mehta', email: 'student@example.test', passwordHash: studentHash, role: 'student', room: 'B-204', createdAt: '2026-08-01T08:00:00.000Z' },
 		{ id: 'stu-2', name: 'Priya Nair', email: 'priya@example.test', passwordHash: studentHash, role: 'student', room: 'A-112', createdAt: '2026-08-01T08:00:00.000Z' },
 		{ id: 'stu-3', name: 'Rohan Das', email: 'rohan@example.test', passwordHash: studentHash, role: 'student', room: 'C-008', createdAt: '2026-08-01T08:00:00.000Z' },
-		{ id: 'war-1', name: 'Mr. K. Sahu', email: 'warden@example.test', passwordHash: wardenHash, role: 'warden', room: null, createdAt: '2026-08-01T08:00:00.000Z' }
+		{ id: 'war-1', name: 'Mr. K. Sahu', email: 'warden@example.test', passwordHash: wardenHash, role: 'warden', room: null, createdAt: '2026-08-01T08:00:00.000Z' },
+		{ id: 'admin-1', name: 'System Admin', email: 'admin@example.test', passwordHash: hashPassword('admin123'), role: 'admin', room: null, createdAt: '2026-08-01T08:00:00.000Z' }
 	];
 
 	const grievances = [

@@ -33,7 +33,8 @@
 			// getSession() is already updated; route guard redirects by role.
 			const { getSession } = await import('$lib/stores/auth.svelte');
 			const user = getSession();
-			await goto(user?.role === 'warden' ? '/warden' : '/student', { replaceState: true });
+			const prefix = user?.role === 'admin' ? '/admin' : user?.role === 'student' ? '/student' : '/warden';
+			await goto(prefix, { replaceState: true });
 		} else {
 			error = result.error ?? 'Sign-in failed. Please try again.';
 		}
@@ -103,6 +104,7 @@
 
 		<p class="text-muted-foreground mt-6 text-center text-xs leading-relaxed">
 			Demo environment — development credentials only:<br />
+			Admin: admin@example.test / admin123<br />
 			Student: student@example.test / student123<br />
 			Warden: warden@example.test / warden123
 		</p>
